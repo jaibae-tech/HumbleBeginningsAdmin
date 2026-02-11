@@ -1,0 +1,31 @@
+
+[14:20:37] [INFO] [Driver] [Init] START: MapMaker starting (Width=1600, Height=1600, Seed=123456)
+[14:20:37] [INFO] [Driver] [Progress] ALLOC: WorldArrays allocated in 3ms
+[14:20:37] [INFO] [Module] [Generation] ELEV_RAW: Generating raw elevation (W=1600, H=1600)
+[14:20:41] [INFO] [Module] [Assigned] ELEVATION_BANDS: Bands assigned. OceanTotal=15.0 % DeepShare=30 %.
+[14:20:41] [INFO] [Module] [Validation] ELEV_ADJ: Mountain tiles adjacent to ocean: 0
+[14:20:41] [INFO] [Module] [Progress] ELEVATION_TIMING: Module 1 (Elevation) completed in 4328ms
+[14:20:45] [INFO] [Driver] [Export] PNG: Wrote WorldPreview_01_ElevationBands.png
+[14:20:45] [INFO] [Export] [Progress] EXPORT_TIMING: Elevation exports completed in 3829ms
+[14:20:45] [INFO] [Module] [Generation] LATITUDE_MODE: Using 5-band mode (height=1600, threshold=1500)
+[14:20:45] [INFO] [Module] [Generation] LATITUDE_COMPLETE: Latitude bands assigned for 1600x1600 map
+[14:20:45] [INFO] [Module] [Validation] LATITUDE_DISTRIBUTION: Arctic: 23.8 % (609133/2560000), Temperate: 58.2 % (1488975/2560000), Tropical: 18.0 % (461892/2560000)
+[14:20:45] [INFO] [Module] [Progress] LATITUDE_TIMING: Module 2 (Latitude) completed in 212ms
+[14:20:49] [INFO] [Driver] [Export] PNG: Wrote WorldPreview_02_LatitudeBands.png
+[14:20:54] [INFO] [Driver] [Export] PNG: Wrote WorldPreview_Stacked.png (with latitude overlay)
+[14:20:54] [INFO] [Export] [Progress] EXPORT_TIMING: Latitude exports completed in 8831ms
+[14:20:54] [INFO] [Module] [Validation] COAST_CFG_VALID: Coast config validated (ShelfDepth=2, MinLakeSize=4)
+[14:20:54] [INFO] [Module] [Generation] COAST_ISLAND_REMOVAL: Removing landmasses that touch forbidden edges (EdgeBias=All)...
+[14:20:55] [INFO] [Module] [Generation] COAST_ISLAND_STATS: Removed 0 components (0 tiles) touching forbidden edges. Kept 58 components (2000643 tiles).
+[14:20:55] [INFO] [Module] [Generation] COAST_OCEAN_CLASS: Deep Ocean: 21.8 % (559357/2560000), Total Ocean: 21.8 % (559357/2560000)
+[14:20:55] [INFO] [Module] [Generation] COAST_SHELF_CLASS: Coastal Shelf: 1.8 % (44900/2560000) within 2 tiles of land
+[14:20:55] [INFO] [Module] [Generation] COAST_LAKE_DETECT: Inland Lakes: 60 detected (83505 tiles), 1 tiny lakes converted to land
+[14:20:55] [INFO] [Module] [Generation] COAST_COMPLETE: Coast classification complete for 1600x1600 map
+[14:20:55] [INFO] [Module] [Validation] COAST_LAND_ISLANDS: Land has 58 connected components (main continent + 57 islands)
+[14:20:56] [INFO] [Module] [Validation] COAST_OCEAN_CONNECTED: All ocean is connected (single component, excluding inland lakes)
+[14:20:56] [INFO] [Module] [Validation] COAST_SHELF_COVERAGE: Coastal shelf covers 8.0 % of ocean tiles (44899/559356)
+[14:20:56] [INFO] [Module] [Progress] COAST_TIMING: Module 3 (Coast) completed in 1386ms
+[14:21:00] [INFO] [Driver] [Export] PNG: Wrote WorldPreview_03_Coast.png
+[14:21:05] [INFO] [Driver] [Export] PNG: Wrote WorldPreview_Stacked.png (with latitude and coast overlay)
+[14:21:05] [INFO] [Export] [Progress] EXPORT_TIMING: Coast exports completed in 9496ms
+[14:21:05] [INFO] [Driver] [Shutdown] END: MapMaker completed run in 28094ms

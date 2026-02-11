@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc5bc62afe7a1a140b2c9fcbe22602a8, type: 3}
+  m_Name: HB_Elevation_Config
+  m_EditorClassIdentifier: Assembly-CSharp::MapMaker.Modules.Elevation1.Config.HB_ElevationConfig
+  NoiseScale: 120
+  Octaves: 4
+  Persistence: 0.5
+  Lacunarity: 2
+  MountainRidgeStrength: 0.545
+  MountainRidgeScale: 75
+  EdgeBias: 5
+  ContinentalGradientStrength: 1.75
+  EdgeFalloffPercent: 0.1
+  EdgeFalloffPower: 2.5
+  BayDepthVariation: 0.7
+  CoastalComplexity: 0.8
+  CoastalComplexityScale: 350
+  ArchipelagoStrength: 0.35
+  OceanTotalPercent: 0.15
+  DeepOceanShareWithinOcean: 0.3
+  LowlandPercent: 0.5
+  HighlandsPercent: 0.22
+  LowMountainsPercent: 0.1
+  HighMountainsPercent: 0.03

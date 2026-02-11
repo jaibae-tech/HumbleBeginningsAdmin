@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d924bd56c1720249a149386b06c0c9c, type: 3}
+  m_Name: HB_Latitude_Default
+  m_EditorClassIdentifier: Assembly-CSharp::MapMaker.Modules.Latitude2.Config.HB_LatitudeConfig
+  ThreeBandArcticPercent: 0.15
+  ThreeBandTemperatePercent: 0.6
+  ThreeBandTropicalPercent: 0.25
+  FiveBandNorthArcticPercent: 0.12
+  FiveBandNorthTemperatePercent: 0.29
+  FiveBandTropicalPercent: 0.18
+  FiveBandSouthTemperatePercent: 0.29
+  FiveBandSouthArcticPercent: 0.12
+  BandWarpNoiseScale: 0.02
+  BandWarpStrength: 0.05

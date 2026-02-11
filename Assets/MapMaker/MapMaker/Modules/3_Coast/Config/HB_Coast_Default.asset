@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8fcd7aec899a5e54baf3c2f67340119d, type: 3}
+  m_Name: HB_Coast_Default
+  m_EditorClassIdentifier: Assembly-CSharp::MapMaker.Modules.Coast3.Config.HB_CoastConfig
+  RemoveEdgeTouchingIslands: 1
+  CoastalShelfDepth: 2
+  DetectInlandLakes: 1
+  MinLakeSize: 4
+  DeepLakeThreshold: 200

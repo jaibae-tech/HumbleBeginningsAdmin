@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22f51e870d956b644ac42c0c752413f2, type: 3}
+  m_Name: HB_Pipeline Config
+  m_EditorClassIdentifier: Assembly-CSharp::MapMaker.Core.Pipeline.HB_PipelineConfig
+  MapConfig: {fileID: 11400000, guid: 39a1db5359c813e4d8184e685dee002a, type: 2}
+  ExportConfig: {fileID: 11400000, guid: 34ac9c1dcad922342975146bae2120fd, type: 2}
+  EnableFileLogging: 1
+  LogDirectory: Logs
+  LogFileName: mapmaker.log
+  MinLogLevel: 1
+  MirrorToConsole: 1
+  EnableElevation: 1
+  EnableLatitude: 1
+  EnableCoast: 1
+  EnableHydrology: 1
+  ElevationConfig: {fileID: 11400000, guid: 9e2a044f0e67ee44b8dd48663a20cd0b, type: 2}
+  LatitudeConfig: {fileID: 11400000, guid: 141264d7fe0a7ef4da710748c9587b51, type: 2}
+  CoastConfig: {fileID: 11400000, guid: f698b5219da1f2d449a0e666190abe65, type: 2}
+  HydrologyConfig: {fileID: 11400000, guid: 7ed1973984673394f8417a9bdde5191c, type: 2}
