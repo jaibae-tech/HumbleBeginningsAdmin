@@ -1,65 +1,79 @@
 using UnityEngine;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
 namespace HumbleBeginnings.WorldViewer
 {
     public sealed class WorldViewerDebugHUD : MonoBehaviour
     {
+        public bool Visible = true;
+
         public WorldViewerController Controller;
         public WorldCameraRig CameraRig;
         public WorldChunkManager ChunkManager;
 
-        public bool Visible = true;
-        public int FontSize = 14;
-
         GUIStyle _style;
-
-        void Awake()
-        {
-            _style = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = FontSize,
-                normal = { textColor = Color.black }
-            };
-        }
-
-        void Update()
-        {
-#if ENABLE_INPUT_SYSTEM
-            // If you want a toggle, wire it later via an InputAction. Leaving always-on for now.
-#endif
-        }
 
         void OnGUI()
         {
             if (!Visible) return;
-            if (!_style) _style = new GUIStyle(GUI.skin.label);
+            if (Controller == null || !Controller.IsLoaded) return;
 
-            var tile = CameraRig ? CameraRig.GetPivotTile() : Vector2Int.zero;
-
-            float tilesAcross = CameraRig ? CameraRig.TilesVisibleAcross : 0f;
-            float pitch = CameraRig ? CameraRig.PitchDegrees : 0f;
-            float yaw = CameraRig ? CameraRig.YawDegrees : 0f;
-
-            int loaded = ChunkManager ? ChunkManager.LoadedChunkCount : 0;
-            int renderedRadius = ChunkManager ? ChunkManager.RenderedRadius : 0;
-            int loadedRadius = ChunkManager ? ChunkManager.LoadedRadius : 0;
-
-            float elev01 = 0f;
-            if (Controller && Controller.Grid != null)
+            if (_style == null)
             {
-                int x = Mathf.Clamp(tile.x, 0, Controller.Meta.WidthTiles - 1);
-                int z = Mathf.Clamp(tile.y, 0, Controller.Meta.HeightTiles - 1);
-                elev01 = Controller.Grid[x, z];
+                _style = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 18
+                };
+                _style.normal.textColor = Color.white;
             }
 
-            string text =
-                $"PivotTile: {tile.x}, {tile.y}\n" +
-                $"TilesVisibleAcross: {tilesAcross:0.0}\n" +
-                $"Pitch: {pitch:0.0}  Yaw: {yaw:0.0}\n" +
-                $"LoadedChunks: {loaded}  RenderedRadius: {renderedRadius}  LoadedRadius: {loadedRadius}\n" +
-                $"Elev01: {elev01:0.000}";
+            int x = 10, y = 10, lh = 22;
 
-            GUI.Label(new Rect(10, 10, 600, 200), text, _style);
+            if (CameraRig != null)
+            {
+                var pivotTile = Controller.WorldToTile(CameraRig.Pivot.position);
+                GUI.Label(new Rect(x, y, 900, lh), $"PivotTile: {pivotTile.x},{pivotTile.y}", _style); y += lh;
+
+                GUI.Label(new Rect(x, y, 900, lh),
+                    $"TilesVisibleAcross: {CameraRig.TilesVisibleAcross:0.0}  Pitch: {CameraRig.PitchDegrees:0.0}  Yaw: {CameraRig.YawDegrees:0.0}",
+                    _style);
+                y += lh;
+            }
+
+            if (ChunkManager != null)
+            {
+                GUI.Label(new Rect(x, y, 900, lh),
+                    $"LoadedChunks: {ChunkManager.LoadedChunkCount}  RenderedRadius: {ChunkManager.RenderedRadius}  LoadedRadius: {ChunkManager.LoadedRadius}",
+                    _style);
+                y += lh;
+            }
+
+            // Hover tile / elevation (Input System)
+#if ENABLE_INPUT_SYSTEM
+            if (CameraRig != null && CameraRig.Cam != null && Mouse.current != null)
+            {
+                Vector2 mp = Mouse.current.position.ReadValue();
+                Ray r = CameraRig.Cam.ScreenPointToRay(new Vector3(mp.x, mp.y, 0f));
+                Plane ground = new Plane(Vector3.up, Vector3.zero);
+
+                if (ground.Raycast(r, out float t))
+                {
+                    Vector3 hit = r.GetPoint(t);
+                    Vector2Int tile = Controller.WorldToTile(hit);
+
+                    tile.x = Mathf.Clamp(tile.x, 0, Controller.Meta.width - 1);
+                    tile.y = Mathf.Clamp(tile.y, 0, Controller.Meta.height - 1);
+
+                    float e01 = Controller.GetElevation01(tile.x, tile.y);
+
+                    GUI.Label(new Rect(x, y, 900, lh), $"HoverTile: {tile.x},{tile.y}  Elev01: {e01:0.000}", _style);
+                    y += lh;
+                }
+            }
+#endif
         }
     }
 }

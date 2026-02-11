@@ -3,164 +3,207 @@ using UnityEngine;
 
 namespace HumbleBeginnings.WorldViewer
 {
+    [DefaultExecutionOrder(60)]
     public sealed class WorldChunkManager : MonoBehaviour
     {
+        [Header("Refs (wired by binder)")]
+        public WorldViewerController Controller;
+        public WorldCameraRig CameraRig;
+
         [Header("Chunk Settings")]
         public int ChunkSize = 64;
-
-        [Tooltip("How many chunks outward to KEEP loaded (creates a (2R+1)^2 grid).")]
         public int LoadedRadius = 2;
-
-        [Tooltip("How many chunks outward to RENDER meshes for. <= LoadedRadius.")]
         public int RenderedRadius = 1;
 
-        [Header("Runtime Material")]
-        public Shader ChunkShader;
-        Material _runtimeMat;
+        [Header("Rendering")]
+        public Material ChunkMaterial;
+        public bool AddMeshCollider = false;
 
-        WorldViewerController _controller;
-        WorldCameraRig _cameraRig;
+        readonly Dictionary<Vector2Int, GameObject> _chunks = new Dictionary<Vector2Int, GameObject>(256);
+        Vector2Int _lastCenterChunk = new Vector2Int(int.MinValue, int.MinValue);
+        ChunkMeshBuilder _builder;
 
-        readonly Dictionary<Vector2Int, GameObject> _loaded = new();
-        Vector2Int _centerTile;
-        Vector2Int _centerChunk;
-
-        public int LoadedChunkCount => _loaded.Count;
+        public int LoadedChunkCount => _chunks.Count;
 
         void Awake()
         {
-            if (!ChunkShader)
-                ChunkShader = Shader.Find("Universal Render Pipeline/Lit");
-
-            _runtimeMat = new Material(ChunkShader)
-            {
-                name = "WV_ChunkMaterial_Runtime"
-            };
+            _builder = new ChunkMeshBuilder();
         }
 
-        void Update()
+        public void Initialize(WorldViewerController controller, WorldCameraRig rig)
         {
-            if (_controller == null || _cameraRig == null) return;
-            if (_controller.Grid == null) return;
+            Controller = controller;
+            CameraRig = rig;
 
-            _centerTile = _cameraRig.GetPivotTile();
-            UpdateLoadedChunks();
-        }
+            if (Controller != null)
+                ChunkSize = Mathf.Max(1, Controller.ChunkSize);
 
-        // --- API expected by binder/HUD ---
-
-        public void Initialize(WorldViewerController controller, WorldCameraRig rig, int chunkSize, int loadedRadius, int renderedRadius)
-        {
-            _controller = controller;
-            _cameraRig = rig;
-
-            ChunkSize = chunkSize;
-            LoadedRadius = Mathf.Max(0, loadedRadius);
-            RenderedRadius = Mathf.Clamp(renderedRadius, 0, LoadedRadius);
-
-            _centerTile = _cameraRig.GetPivotTile();
-            UpdateLoadedChunks(forceRebuild: true);
+            EnsureMaterial();
+            RebuildAll();
         }
 
         public void Teardown()
         {
-            foreach (var kv in _loaded)
-            {
+            foreach (var kv in _chunks)
                 if (kv.Value) Destroy(kv.Value);
+
+            _chunks.Clear();
+            _lastCenterChunk = new Vector2Int(int.MinValue, int.MinValue);
+        }
+
+        [ContextMenu("Rebuild All Chunks")]
+        public void RebuildAll()
+        {
+            if (!Controller || !Controller.IsLoaded || !CameraRig) return;
+
+            Teardown();
+
+            var centerTile = Controller.WorldToTile(CameraRig.Pivot.position);
+            var centerChunk = TileToChunk(centerTile);
+
+            _lastCenterChunk = centerChunk;
+            UpdateChunkSet(centerChunk);
+            UpdateRenderState(centerChunk);
+        }
+
+        void Update()
+        {
+            if (!Controller || !Controller.IsLoaded || !CameraRig) return;
+
+            // Safety
+            if (RenderedRadius > LoadedRadius) RenderedRadius = LoadedRadius;
+
+            var centerTile = Controller.WorldToTile(CameraRig.Pivot.position);
+            var centerChunk = TileToChunk(centerTile);
+
+            if (centerChunk != _lastCenterChunk)
+            {
+                _lastCenterChunk = centerChunk;
+                UpdateChunkSet(centerChunk);
             }
-            _loaded.Clear();
 
-            _controller = null;
-            _cameraRig = null;
+            UpdateRenderState(centerChunk);
         }
 
-        public void SetController(WorldViewerController controller) => _controller = controller;
-
-        public void SetRadii(int renderedRadius, int loadedRadius)
+        Vector2Int TileToChunk(Vector2Int tile)
         {
-            LoadedRadius = Mathf.Max(0, loadedRadius);
-            RenderedRadius = Mathf.Clamp(renderedRadius, 0, LoadedRadius);
+            int cx = Mathf.FloorToInt(tile.x / (float)ChunkSize);
+            int cy = Mathf.FloorToInt(tile.y / (float)ChunkSize);
+            return new Vector2Int(cx, cy);
         }
 
-        public void SetCenterTile(Vector2Int tile)
+        bool ChunkStartsInWorld(Vector2Int chunkCoord)
         {
-            _centerTile = tile;
-            UpdateLoadedChunks();
+            int w = Controller.Meta.width;
+            int h = Controller.Meta.height;
+
+            int startX = chunkCoord.x * ChunkSize;
+            int startY = chunkCoord.y * ChunkSize;
+
+            // IMPORTANT: do NOT clamp negatives to 0,0 (that causes stacking).
+            if (startX < 0 || startY < 0) return false;
+            if (startX >= w || startY >= h) return false;
+
+            return true;
         }
 
-        // --- Internal ---
-
-        void UpdateLoadedChunks(bool forceRebuild = false)
+        void UpdateChunkSet(Vector2Int centerChunk)
         {
-            if (_controller == null) return;
+            var desired = new HashSet<Vector2Int>();
 
-            int centerChunkX = Mathf.FloorToInt(_centerTile.x / (float)ChunkSize);
-            int centerChunkZ = Mathf.FloorToInt(_centerTile.y / (float)ChunkSize);
-            _centerChunk = new Vector2Int(centerChunkX, centerChunkZ);
-
-            // determine target set
-            var target = new HashSet<Vector2Int>();
-            for (int dz = -LoadedRadius; dz <= LoadedRadius; dz++)
+            for (int dy = -LoadedRadius; dy <= LoadedRadius; dy++)
             for (int dx = -LoadedRadius; dx <= LoadedRadius; dx++)
             {
-                var cc = new Vector2Int(_centerChunk.x + dx, _centerChunk.y + dz);
-                target.Add(cc);
-
-                if (!_loaded.ContainsKey(cc))
-                    _loaded[cc] = CreateChunk(cc);
-
-                // enable/disable renderer depending on RenderedRadius
-                bool shouldRender = Mathf.Abs(dx) <= RenderedRadius && Mathf.Abs(dz) <= RenderedRadius;
-                if (_loaded[cc] && _loaded[cc].TryGetComponent<MeshRenderer>(out var mr))
-                    mr.enabled = shouldRender;
+                var cc = new Vector2Int(centerChunk.x + dx, centerChunk.y + dy);
+                if (!ChunkStartsInWorld(cc)) continue;
+                desired.Add(cc);
             }
 
-            // unload anything not targeted
+            // remove
             var toRemove = new List<Vector2Int>();
-            foreach (var kv in _loaded)
-            {
-                if (!target.Contains(kv.Key))
-                {
-                    if (kv.Value) Destroy(kv.Value);
+            foreach (var kv in _chunks)
+                if (!desired.Contains(kv.Key))
                     toRemove.Add(kv.Key);
-                }
-            }
-            foreach (var k in toRemove) _loaded.Remove(k);
 
-            if (forceRebuild)
+            foreach (var key in toRemove)
             {
-                // optional future: rebuild meshes
+                if (_chunks.TryGetValue(key, out var go) && go) Destroy(go);
+                _chunks.Remove(key);
+            }
+
+            // add
+            foreach (var cc in desired)
+            {
+                if (_chunks.ContainsKey(cc)) continue;
+                var go = CreateChunkGO(cc);
+                if (go != null) _chunks.Add(cc, go);
             }
         }
 
-        GameObject CreateChunk(Vector2Int chunkCoord)
+        void UpdateRenderState(Vector2Int centerChunk)
         {
-            // Tile origin for this chunk
-            var originTile = WorldCoord.ChunkToTileOrigin(chunkCoord.x, chunkCoord.y, ChunkSize);
+            foreach (var kv in _chunks)
+            {
+                int d = Mathf.Max(Mathf.Abs(kv.Key.x - centerChunk.x), Mathf.Abs(kv.Key.y - centerChunk.y));
+                bool shouldRender = d <= RenderedRadius;
 
-            // World position of that tile origin
-            Vector3 originWS = WorldCoord.TileToWorld(originTile.x, originTile.y, _controller.TileSize);
+                if (kv.Value && kv.Value.activeSelf != shouldRender)
+                    kv.Value.SetActive(shouldRender);
+            }
+        }
+
+        GameObject CreateChunkGO(Vector2Int chunkCoord)
+        {
+            int w = Controller.Meta.width;
+            int h = Controller.Meta.height;
+
+            int startX = chunkCoord.x * ChunkSize;
+            int startY = chunkCoord.y * ChunkSize;
+
+            if (startX < 0 || startY < 0) return null;
+            if (startX >= w || startY >= h) return null;
+
+            int sizeX = Mathf.Min(ChunkSize, w - startX);
+            int sizeY = Mathf.Min(ChunkSize, h - startY);
+            if (sizeX <= 0 || sizeY <= 0) return null;
 
             var go = new GameObject($"Chunk_{chunkCoord.x}_{chunkCoord.y}");
             go.transform.SetParent(transform, false);
-            go.transform.position = originWS;
+            go.transform.position = Controller.TileToWorld(startX, startY);
 
             var mf = go.AddComponent<MeshFilter>();
             var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = _runtimeMat;
+            mr.sharedMaterial = ChunkMaterial;
 
-            var meshBuilder = new ChunkMeshBuilder();
-            mf.sharedMesh = meshBuilder.BuildElevationMesh(
-                _controller.Grid,
-                _controller.Meta,
-                originTile.x,
-                originTile.y,
-                ChunkSize,
-                _controller.TileSize,
-                _controller.HeightScale
-            );
+            if (AddMeshCollider) go.AddComponent<MeshCollider>();
+
+            var mesh = _builder.BuildElevationMesh(
+                Controller,
+                startX, startY,
+                sizeX, sizeY,
+                Controller.TileSize,
+                Controller.HeightScale);
+
+            mf.sharedMesh = mesh;
+
+            if (AddMeshCollider)
+            {
+                var mc = go.GetComponent<MeshCollider>();
+                if (mc) mc.sharedMesh = mesh;
+            }
 
             return go;
+        }
+
+        void EnsureMaterial()
+        {
+            if (ChunkMaterial) return;
+
+            // Default to your VertexColorLit if present; else URP/Lit
+            var shader = Shader.Find("HumbleBeginnings/WorldViewer/VertexColorLit");
+            if (!shader) shader = Shader.Find("Universal Render Pipeline/Lit");
+
+            ChunkMaterial = new Material(shader) { name = "WV_ChunkMaterial_Runtime" };
         }
     }
 }
