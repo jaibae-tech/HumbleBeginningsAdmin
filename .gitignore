@@ -8,3 +8,7 @@ UserSettings/
 .vs/
 .idea/
 .vscode/
+
+*.csproj
+*.sln
+.bezisidekick/
