@@ -17,7 +17,8 @@ public sealed class UnifiedDiffPatchApplierWindow : EditorWindow
     private Vector2 _scroll;
     private string _status = "Paste a unified diff patch, then Validate, then Apply.";
 
-    private const string BackupRoot = "Assets/Editor/PatchApplier/_PatchBackups";
+    private const string BackupRoot = "Library/PatchApplierBackups";
+
 
     [MenuItem("Tools/Patch Applier (Unified Diff)")]
     public static void ShowWindow()
@@ -304,8 +305,10 @@ public sealed class UnifiedDiffPatchApplierWindow : EditorWindow
                         break;
 
                     // Hunk body lines begin with ' ', '+', '-', or '\'
-                    if (l2.Length == 0 || l2[0] == ' ' || l2[0] == '+' || l2[0] == '-' || l2[0] == '\\')
+                    if (l2.Length > 0 && (l2[0] == ' ' || l2[0] == '+' || l2[0] == '-' || l2[0] == '\\'))
                         h.Lines.Add(l2);
+
+
 
                     i++;
                 }
