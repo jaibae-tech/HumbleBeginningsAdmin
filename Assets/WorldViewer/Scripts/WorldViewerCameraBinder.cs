@@ -7,19 +7,12 @@ namespace HumbleBeginnings.WorldViewer
         public WorldViewerController Controller;
         public WorldCameraRig CameraRig;
         public WorldChunkManager ChunkManager;
-        public WorldViewerDebugHUD DebugHUD;
-
-        [Header("Chunk Streaming Defaults")]
-        public int ChunkSize = 64;
-        public int LoadedRadius = 2;
-        public int RenderedRadius = 2;
 
         void Awake()
         {
-            if (!Controller) Controller = FindFirstObjectByType<WorldViewerController>();
+            if (!Controller) Controller = GetComponent<WorldViewerController>();
             if (!CameraRig) CameraRig = FindFirstObjectByType<WorldCameraRig>();
             if (!ChunkManager) ChunkManager = FindFirstObjectByType<WorldChunkManager>();
-            if (!DebugHUD) DebugHUD = FindFirstObjectByType<WorldViewerDebugHUD>();
         }
 
         // Called by WorldViewerController after LoadWorld()
@@ -27,31 +20,25 @@ namespace HumbleBeginnings.WorldViewer
         {
             if (!Controller || !Controller.IsLoaded) return;
 
-            // Configure rig bounds
             if (CameraRig)
             {
-                var center = Controller.WorldCenter();
-                CameraRig.ConfigureWorld(Controller.Meta.width, Controller.Meta.height, Controller.TileSize, center);
+                CameraRig.ConfigureWorld(
+                    Controller.Meta.width,
+                    Controller.Meta.height,
+                    Controller.TileSize,
+                    Controller.WorldCenter());
             }
 
-            // Configure chunk manager
             if (ChunkManager)
             {
-                ChunkManager.ChunkSize = ChunkSize;
-                ChunkManager.LoadedRadius = LoadedRadius;
-                ChunkManager.RenderedRadius = Mathf.Min(RenderedRadius, LoadedRadius);
                 ChunkManager.Initialize(Controller, CameraRig);
             }
 
-            if (DebugHUD)
-            {
-                DebugHUD.Controller = Controller;
-                DebugHUD.CameraRig = CameraRig;
-                DebugHUD.ChunkManager = ChunkManager;
-            }
+            // Ensure an ocean skirt plane exists to fill beyond world bounds (prevents edge "void" at low pitch).
+            WVOceanSkirt.EnsureAndConfigure(Controller);
         }
 
-        // Called by WorldViewerController when unloading
+        // Called by WorldViewerController on unload
         public void OnWorldUnloaded()
         {
             if (ChunkManager) ChunkManager.Teardown();

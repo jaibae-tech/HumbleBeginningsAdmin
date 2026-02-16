@@ -19,6 +19,10 @@ namespace HumbleBeginnings.WorldViewer
         public Material ChunkMaterial;
         public bool AddMeshCollider = false;
 
+        [Header("Debug Logging")]
+        public bool DebugLogChunkLifecycle = false;
+        public bool DebugLogChunkBounds = false;
+
         readonly Dictionary<Vector2Int, GameObject> _chunks = new Dictionary<Vector2Int, GameObject>(256);
         Vector2Int _lastCenterChunk = new Vector2Int(int.MinValue, int.MinValue);
         ChunkMeshBuilder _builder;
@@ -38,8 +42,7 @@ namespace HumbleBeginnings.WorldViewer
             if (Controller != null)
                 ChunkSize = Mathf.Max(1, Controller.ChunkSize);
 
-            EnsureMaterial();
-            RebuildAll();
+            Teardown(); // start clean
         }
 
         public void Teardown()
@@ -51,26 +54,9 @@ namespace HumbleBeginnings.WorldViewer
             _lastCenterChunk = new Vector2Int(int.MinValue, int.MinValue);
         }
 
-        [ContextMenu("Rebuild All Chunks")]
-        public void RebuildAll()
-        {
-            if (!Controller || !Controller.IsLoaded || !CameraRig) return;
-
-            Teardown();
-
-            var centerTile = Controller.WorldToTile(CameraRig.Pivot.position);
-            var centerChunk = TileToChunk(centerTile);
-
-            _lastCenterChunk = centerChunk;
-            UpdateChunkSet(centerChunk);
-            UpdateRenderState(centerChunk);
-        }
-
         void Update()
         {
             if (!Controller || !Controller.IsLoaded || !CameraRig) return;
-
-            // Safety
             if (RenderedRadius > LoadedRadius) RenderedRadius = LoadedRadius;
 
             var centerTile = Controller.WorldToTile(CameraRig.Pivot.position);
@@ -83,6 +69,9 @@ namespace HumbleBeginnings.WorldViewer
             }
 
             UpdateRenderState(centerChunk);
+
+            // Optional pivot sample logging
+            Controller.LogPivotElevationSamples(centerTile.x, centerTile.y);
         }
 
         Vector2Int TileToChunk(Vector2Int tile)
@@ -92,17 +81,17 @@ namespace HumbleBeginnings.WorldViewer
             return new Vector2Int(cx, cy);
         }
 
-        bool ChunkStartsInWorld(Vector2Int chunkCoord)
+        bool ChunkStartInWorld(Vector2Int chunkCoord)
         {
-            int w = Controller.Meta.width;
-            int h = Controller.Meta.height;
-
             int startX = chunkCoord.x * ChunkSize;
             int startY = chunkCoord.y * ChunkSize;
 
-            // IMPORTANT: do NOT clamp negatives to 0,0 (that causes stacking).
+            int worldW = Controller.Meta.width;
+            int worldH = Controller.Meta.height;
+
+            // IMPORTANT: skip out-of-world chunks (do NOT clamp negatives to 0).
             if (startX < 0 || startY < 0) return false;
-            if (startX >= w || startY >= h) return false;
+            if (startX >= worldW || startY >= worldH) return false;
 
             return true;
         }
@@ -115,7 +104,7 @@ namespace HumbleBeginnings.WorldViewer
             for (int dx = -LoadedRadius; dx <= LoadedRadius; dx++)
             {
                 var cc = new Vector2Int(centerChunk.x + dx, centerChunk.y + dy);
-                if (!ChunkStartsInWorld(cc)) continue;
+                if (!ChunkStartInWorld(cc)) continue;
                 desired.Add(cc);
             }
 
@@ -129,6 +118,9 @@ namespace HumbleBeginnings.WorldViewer
             {
                 if (_chunks.TryGetValue(key, out var go) && go) Destroy(go);
                 _chunks.Remove(key);
+
+                if (DebugLogChunkLifecycle)
+                    Debug.Log($"[WorldViewer][WorldChunkManager] Unloaded chunk {key}");
             }
 
             // add
@@ -154,17 +146,17 @@ namespace HumbleBeginnings.WorldViewer
 
         GameObject CreateChunkGO(Vector2Int chunkCoord)
         {
-            int w = Controller.Meta.width;
-            int h = Controller.Meta.height;
+            int worldW = Controller.Meta.width;
+            int worldH = Controller.Meta.height;
 
             int startX = chunkCoord.x * ChunkSize;
             int startY = chunkCoord.y * ChunkSize;
 
             if (startX < 0 || startY < 0) return null;
-            if (startX >= w || startY >= h) return null;
+            if (startX >= worldW || startY >= worldH) return null;
 
-            int sizeX = Mathf.Min(ChunkSize, w - startX);
-            int sizeY = Mathf.Min(ChunkSize, h - startY);
+            int sizeX = Mathf.Min(ChunkSize, worldW - startX);
+            int sizeY = Mathf.Min(ChunkSize, worldH - startY);
             if (sizeX <= 0 || sizeY <= 0) return null;
 
             var go = new GameObject($"Chunk_{chunkCoord.x}_{chunkCoord.y}");
@@ -192,18 +184,16 @@ namespace HumbleBeginnings.WorldViewer
                 if (mc) mc.sharedMesh = mesh;
             }
 
+            if (DebugLogChunkLifecycle)
+                Debug.Log($"[WorldViewer][WorldChunkManager] Loaded chunk {chunkCoord} start=({startX},{startY}) size=({sizeX}x{sizeY}) worldPos={go.transform.position}");
+
+            if (DebugLogChunkBounds && mesh != null)
+            {
+                var b = mesh.bounds;
+                Debug.Log($"[WorldViewer][WorldChunkManager] Chunk {chunkCoord} mesh bounds center={b.center} size={b.size}");
+            }
+
             return go;
-        }
-
-        void EnsureMaterial()
-        {
-            if (ChunkMaterial) return;
-
-            // Default to your VertexColorLit if present; else URP/Lit
-            var shader = Shader.Find("HumbleBeginnings/WorldViewer/VertexColorLit");
-            if (!shader) shader = Shader.Find("Universal Render Pipeline/Lit");
-
-            ChunkMaterial = new Material(shader) { name = "WV_ChunkMaterial_Runtime" };
         }
     }
 }

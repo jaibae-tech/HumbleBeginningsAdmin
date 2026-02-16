@@ -7,17 +7,24 @@ using MapMaker.Shared.Utils;
 
 namespace MapMaker.Modules.Latitude2.Scripts
 {
+    /// <summary>
+    /// Module 2: Latitude
+    /// Produces a continuous latitude energy driver field (0..1).
+    /// - 1.0 = warmest (south edge)
+    /// - 0.0 = coldest (north edge)
+    /// Also writes a per-tile seasonal amplitude proxy (0..1) derived only from latitude.
+    ///
+    /// This module intentionally does NOT assign biomes or discrete latitude bands.
+    /// </summary>
     public sealed class LatitudeGenerator
     {
         private readonly HB_LatitudeConfig _cfg;
-        private readonly int _heightThreshold;
         private readonly SeedContext _seed;
         private readonly LogEmitter _emit;
 
-        public LatitudeGenerator(HB_LatitudeConfig cfg, int heightThreshold, SeedContext seed, LogEmitter emit)
+        public LatitudeGenerator(HB_LatitudeConfig cfg, SeedContext seed, LogEmitter emit)
         {
             _cfg = cfg;
-            _heightThreshold = heightThreshold;
             _seed = seed;
             _emit = emit;
         }
@@ -25,132 +32,60 @@ namespace MapMaker.Modules.Latitude2.Scripts
         public void Execute(WorldArrays world)
         {
             if (world == null) throw new ArgumentNullException(nameof(world));
+            if (_cfg == null) throw new ArgumentNullException(nameof(_cfg));
 
             int w = world.Width;
             int h = world.Height;
 
-            bool useFiveBands = h >= _heightThreshold;
-            _emit(LogLevel.INFO, LogContext.Module, LogPhase.Generation, "LATITUDE_MODE",
-                $"Using {(useFiveBands ? "5" : "3")}-band mode (height={h}, threshold={_heightThreshold})");
+            if (world.LatitudeEnergy01 == null || world.LatitudeEnergy01.Length != world.Count)
+                throw new InvalidOperationException("WorldArrays.LatitudeEnergy01 is not allocated or has incorrect length.");
+            if (world.SeasonalAmplitude01 == null || world.SeasonalAmplitude01.Length != world.Count)
+                throw new InvalidOperationException("WorldArrays.SeasonalAmplitude01 is not allocated or has incorrect length.");
 
-            float ox = (float)_seed.LatitudeRng.NextDouble() * 10000f;
-            float oy = (float)_seed.LatitudeRng.NextDouble() * 10000f;
-            float warpScale = Mathf.Max(0.0001f, _cfg.BandWarpNoiseScale);
-            float warpStrength = Mathf.Clamp(_cfg.BandWarpStrength, 0f, 0.2f);
+            // Seed-stable global phase for the optional one-lobe warp.
+            float phase = (float)(_seed.LatitudeRng.NextDouble() * (Math.PI * 2.0));
 
-            if (useFiveBands)
+            _emit(LogLevel.INFO, LogContext.Module, LogPhase.Generation, "LATITUDE_DRIVER",
+                $"Latitude driver field: Lmin={_cfg.LatitudeMin01:F2}, Lmax={_cfg.LatitudeMax01:F2}, curve={_cfg.CurvePower:F2}, warp={( _cfg.EnableGlobalWarp ? "ON" : "OFF" )}");
+
+            float denomY = Mathf.Max(1f, h - 1);
+            float denomX = Mathf.Max(1f, w - 1);
+
+            for (int y = 0; y < h; y++)
             {
-                Generate5Bands(world, w, h, ox, oy, warpScale, warpStrength);
-            }
-            else
-            {
-                Generate3Bands(world, w, h, ox, oy, warpScale, warpStrength);
+                // yN: 0 south (warm), 1 north (cold)
+                float yN = y / denomY;
+                float L0 = 1f - yN;
+
+                for (int x = 0; x < w; x++)
+                {
+                    int idx = (y * w) + x;
+
+                    float L = Mathf.Lerp(_cfg.LatitudeMin01, _cfg.LatitudeMax01, L0);
+
+                    // Optional shaping (global curve, no spatial pattern)
+                    if (Mathf.Abs(_cfg.CurvePower - 1f) > 0.0001f)
+                        L = Mathf.Pow(L, _cfg.CurvePower);
+
+                    // Optional single broad warp across X (one cycle) to avoid a perfectly uniform meridian slice.
+                    if (_cfg.EnableGlobalWarp && _cfg.WarpAmplitude > 0f)
+                    {
+                        float xN = x / denomX;
+                        float warp = Mathf.Sin((xN * Mathf.PI * 2f) + phase);
+                        L = Mathf.Clamp01(L + (warp * _cfg.WarpAmplitude));
+                    }
+
+                    world.LatitudeEnergy01[idx] = L;
+
+                    // Seasonal amplitude increases toward the cold north (low L).
+                    float northness = Mathf.Clamp01(1f - L);
+                    float a = Mathf.Pow(northness, _cfg.SeasonLatitudePower);
+                    world.SeasonalAmplitude01[idx] = Mathf.Lerp(_cfg.SeasonAmpMin01, _cfg.SeasonAmpMax01, a);
+                }
             }
 
             _emit(LogLevel.INFO, LogContext.Module, LogPhase.Generation, "LATITUDE_COMPLETE",
-                $"Latitude bands assigned for {w}x{h} map");
-        }
-
-        private void Generate3Bands(WorldArrays world, int w, int h, float ox, float oy, float warpScale, float warpStrength)
-        {
-            float sum = _cfg.ThreeBandSum();
-            if (sum <= 0f)
-            {
-                _emit(LogLevel.WARN, LogContext.Module, LogPhase.Generation, "LATITUDE_SUM_ZERO",
-                    "3-band percentages sum to 0. Using equal distribution.");
-                sum = 1f;
-            }
-
-            float arcticNorm = _cfg.ThreeBandArcticPercent / sum;
-            float temperateNorm = _cfg.ThreeBandTemperatePercent / sum;
-            float tropicalNorm = _cfg.ThreeBandTropicalPercent / sum;
-
-            float tropicalEnd = tropicalNorm;
-            float temperateEnd = tropicalEnd + temperateNorm;
-
-            for (int y = 0; y < h; y++)
-            {
-                for (int x = 0; x < w; x++)
-                {
-                    float normalizedY = (float)y / Mathf.Max(1f, h - 1);
-                    float warp = Mathf.PerlinNoise((x + ox) * warpScale, (y + oy) * warpScale);
-                    float warpOffset = (warp - 0.5f) * 2f * warpStrength;
-                    float adjustedY = Mathf.Clamp01(normalizedY + warpOffset);
-
-                    LatitudeBandType band;
-                    if (adjustedY < tropicalEnd)
-                    {
-                        band = LatitudeBandType.Tropical;
-                    }
-                    else if (adjustedY < temperateEnd)
-                    {
-                        band = LatitudeBandType.Temperate;
-                    }
-                    else
-                    {
-                        band = LatitudeBandType.Arctic;
-                    }
-
-                    world.LatitudeBands[(y * w) + x] = band;
-                }
-            }
-        }
-
-        private void Generate5Bands(WorldArrays world, int w, int h, float ox, float oy, float warpScale, float warpStrength)
-        {
-            float sum = _cfg.FiveBandSum();
-            if (sum <= 0f)
-            {
-                _emit(LogLevel.WARN, LogContext.Module, LogPhase.Generation, "LATITUDE_SUM_ZERO",
-                    "5-band percentages sum to 0. Using equal distribution.");
-                sum = 1f;
-            }
-
-            float southArcticNorm = _cfg.FiveBandSouthArcticPercent / sum;
-            float southTemperateNorm = _cfg.FiveBandSouthTemperatePercent / sum;
-            float tropicalNorm = _cfg.FiveBandTropicalPercent / sum;
-            float northTemperateNorm = _cfg.FiveBandNorthTemperatePercent / sum;
-            float northArcticNorm = _cfg.FiveBandNorthArcticPercent / sum;
-
-            float southArcticEnd = southArcticNorm;
-            float southTemperateEnd = southArcticEnd + southTemperateNorm;
-            float tropicalEnd = southTemperateEnd + tropicalNorm;
-            float northTemperateEnd = tropicalEnd + northTemperateNorm;
-
-            for (int y = 0; y < h; y++)
-            {
-                for (int x = 0; x < w; x++)
-                {
-                    float normalizedY = (float)y / Mathf.Max(1f, h - 1);
-                    float warp = Mathf.PerlinNoise((x + ox) * warpScale, (y + oy) * warpScale);
-                    float warpOffset = (warp - 0.5f) * 2f * warpStrength;
-                    float adjustedY = Mathf.Clamp01(normalizedY + warpOffset);
-
-                    LatitudeBandType band;
-                    if (adjustedY < southArcticEnd)
-                    {
-                        band = LatitudeBandType.Arctic;
-                    }
-                    else if (adjustedY < southTemperateEnd)
-                    {
-                        band = LatitudeBandType.Temperate;
-                    }
-                    else if (adjustedY < tropicalEnd)
-                    {
-                        band = LatitudeBandType.Tropical;
-                    }
-                    else if (adjustedY < northTemperateEnd)
-                    {
-                        band = LatitudeBandType.Temperate;
-                    }
-                    else
-                    {
-                        band = LatitudeBandType.Arctic;
-                    }
-
-                    world.LatitudeBands[(y * w) + x] = band;
-                }
-            }
+                $"Latitude energy computed for {w}x{h} tiles");
         }
     }
 }

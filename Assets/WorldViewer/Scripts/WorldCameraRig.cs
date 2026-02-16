@@ -40,7 +40,26 @@ namespace HumbleBeginnings.WorldViewer
         public bool UseOrthographic = true;
         public float InitialTilesVisible = 250f;
 
-        float _yaw;
+        [Tooltip("World-space camera distance from pivot in tile units (scaled by TileSize).")]
+        public float CameraDistanceTiles = 400f;
+
+        [Tooltip("Minimum world-space offset above pivot to avoid ground clipping.")]
+        public float MinCameraHeight = 250f;
+
+        [Header("Sea / Horizon Clamp")]
+        [Tooltip("If true, prevents the camera from ever going below sea level + clearance (prevents under-world views).")]
+        public bool ClampAboveSea = true;
+
+        [Tooltip("Extra clearance above sea level in world units.")]
+        public float SeaClearance = 20f;
+
+        [Tooltip("Optional: add to camera near clip to reduce depth artifacts when low-angle (0.3–1.0 recommended).")]
+        public float NearClip = 0.3f;
+
+        WorldViewerController _controller;
+        float _seaWorldY;
+
+float _yaw;
         float _pitch = 65f;
         float _tilesVisible;
 
@@ -57,8 +76,19 @@ namespace HumbleBeginnings.WorldViewer
             _pitch = Mathf.Clamp(_pitch, MinPitch, MaxPitch);
             _tilesVisible = Mathf.Clamp(InitialTilesVisible, MinTilesVisible, MaxTilesVisible);
 
+            _controller = FindFirstObjectByType<WorldViewerController>();
+            RefreshSeaWorldY();
+
+            Pivot.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
+
+            RefreshSeaWorldY();
+
             ApplyCameraSize();
+            ApplyCameraTransform();
+            EnforceSeaClamp(false);
+            EnforceSeaClamp(true);
         }
+
 
         void Update()
         {
@@ -76,7 +106,11 @@ namespace HumbleBeginnings.WorldViewer
             if (ClampToWorldBounds && WorldWidthTiles > 0 && WorldHeightTiles > 0)
                 ClampPivotToWorld();
 
+            RefreshSeaWorldY();
+
             ApplyCameraSize();
+            ApplyCameraTransform();
+            EnforceSeaClamp(false);
 #endif
         }
 
@@ -121,6 +155,47 @@ namespace HumbleBeginnings.WorldViewer
         }
 #endif
 
+        void ApplyCameraTransform()
+        {
+            if (!Cam || !Pivot) return;
+
+            float unitsPerTile = Mathf.Max(0.0001f, TileSize);
+            float distance = Mathf.Max(0.01f, CameraDistanceTiles * unitsPerTile);
+
+            // In orthographic mode, keep the camera far enough from terrain and scale distance with zoom.
+            if (Cam.orthographic)
+            {
+                float zoomDrivenDistance = _tilesVisible * unitsPerTile * 0.9f;
+                distance = Mathf.Max(distance, zoomDrivenDistance);
+            }
+
+            // Keep camera authored relative to pivot when parented (scene default),
+            // which avoids unstable world/local conversions and guarantees aiming through pivot.
+            if (Cam.transform.parent == Pivot)
+            {
+                // Drive camera offset from pitch so low angles (e.g. 20°) are achievable.
+                // distance is along the view ray; decompose into local Y/Z using sin/cos.
+                float pitchRad = _pitch * Mathf.Deg2Rad;
+
+                float localY = Mathf.Max(MinCameraHeight, distance * Mathf.Sin(pitchRad));
+                float localZ = -Mathf.Max(0.01f, distance * Mathf.Cos(pitchRad));
+
+                Vector3 localPos = new Vector3(0f, localY, localZ);
+
+                Cam.transform.localPosition = localPos;
+                Cam.transform.localRotation = Quaternion.LookRotation((-localPos).normalized, Vector3.up);
+                return;
+            }
+
+            // Fallback for unparented camera references.
+            Vector3 viewDir = Pivot.forward.sqrMagnitude > 0.0001f ? Pivot.forward.normalized : Vector3.forward;
+            Vector3 camPos = Pivot.position - (viewDir * distance);
+            camPos.y = Mathf.Max(camPos.y, MinCameraHeight);
+
+            Cam.transform.position = camPos;
+            Cam.transform.rotation = Quaternion.LookRotation((Pivot.position - camPos).normalized, Vector3.up);
+        }
+
         void ApplyCameraSize()
         {
             Cam.orthographic = UseOrthographic;
@@ -134,12 +209,75 @@ namespace HumbleBeginnings.WorldViewer
             float targetHeightUnits = targetWidthUnits / Mathf.Max(0.0001f, Cam.aspect);
 
             Cam.orthographicSize = targetHeightUnits * 0.5f;
+
+            float worldW = Mathf.Max(1f, WorldWidthTiles * unitsPerTile);
+            float worldH = Mathf.Max(1f, WorldHeightTiles * unitsPerTile);
+            float worldDiagonal = Mathf.Sqrt(worldW * worldW + worldH * worldH);
+
+            Cam.nearClipPlane = Mathf.Max(0.01f, NearClip);
+            Cam.farClipPlane = Mathf.Max(8000f, worldDiagonal + Mathf.Max(2000f, Cam.orthographicSize * 8f));
         }
 
-        void ClampPivotToWorld()
+        
+
+void RefreshSeaWorldY()
+{
+    if (!ClampAboveSea) return;
+
+    if (!_controller) _controller = FindFirstObjectByType<WorldViewerController>();
+    if (_controller && _controller.IsLoaded)
+    {
+        var meta = _controller.Meta;
+        _seaWorldY = meta.seaLevel01 * _controller.HeightScale;
+    }
+}
+
+void EnforceSeaClamp(bool forceSnap)
+{
+    if (!ClampAboveSea || !Cam || !Pivot) return;
+    if (!_controller || !_controller.IsLoaded) return;
+
+    float minWorldY = _seaWorldY + Mathf.Max(0f, SeaClearance);
+
+    // If the pivot itself is below sea, lift it (rare, but avoids orbiting from underwater).
+    if (forceSnap && Pivot.position.y < minWorldY * 0.25f)
+    {
+        var p = Pivot.position;
+        p.y = 0f;
+        Pivot.position = p;
+    }
+
+    var camPos = Cam.transform.position;
+    if (camPos.y < minWorldY)
+    {
+        float delta = minWorldY - camPos.y;
+
+        if (Cam.transform.parent == Pivot)
         {
-            float maxX = WorldWidthTiles * TileSize;
-            float maxZ = WorldHeightTiles * TileSize;
+            // Increase local Y by the delta (approx). Re-aim through pivot.
+            var lp = Cam.transform.localPosition;
+            lp.y += delta;
+            Cam.transform.localPosition = lp;
+
+            var toPivot = (Pivot.position - Cam.transform.position);
+            if (toPivot.sqrMagnitude > 0.0001f)
+                Cam.transform.rotation = Quaternion.LookRotation(toPivot.normalized, Vector3.up);
+        }
+        else
+        {
+            camPos.y = minWorldY;
+            Cam.transform.position = camPos;
+
+            var toPivot = (Pivot.position - camPos);
+            if (toPivot.sqrMagnitude > 0.0001f)
+                Cam.transform.rotation = Quaternion.LookRotation(toPivot.normalized, Vector3.up);
+        }
+    }
+}
+void ClampPivotToWorld()
+        {
+            float maxX = Mathf.Max(0, WorldWidthTiles - 1) * TileSize;
+            float maxZ = Mathf.Max(0, WorldHeightTiles - 1) * TileSize;
 
             var p = Pivot.position;
             p.x = Mathf.Clamp(p.x, 0f, maxX);
@@ -153,7 +291,14 @@ namespace HumbleBeginnings.WorldViewer
             WorldHeightTiles = heightTiles;
             TileSize = tileSize;
             Pivot.position = worldCenter;
+            RefreshSeaWorldY();
+
+            ApplyCameraSize();
+            ApplyCameraTransform();
+            EnforceSeaClamp(false);
+            EnforceSeaClamp(true);
         }
+
 
         public Vector2Int GetPivotTile()
         {

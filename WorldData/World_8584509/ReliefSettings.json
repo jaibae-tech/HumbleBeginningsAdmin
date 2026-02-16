@@ -1,0 +1,10 @@
+  {
+    "slopeStrength": 1.25,
+    "curvatureStrength": 0.75,
+    "curvatureRadius": 2,
+    "aoEnabled": true,
+    "aoStrength": 0.65,
+    "aoRadius": 3,
+    "oceanDarken": 0.15,
+    "minShade": 0.28
+  }

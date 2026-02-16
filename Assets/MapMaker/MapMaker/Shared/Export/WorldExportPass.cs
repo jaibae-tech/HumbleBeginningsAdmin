@@ -14,7 +14,8 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
             if (exportConfig == null || arrays == null || arrays.ElevationBands == null)
             {
@@ -22,7 +23,7 @@ namespace MapMaker.Shared.Export
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -49,7 +50,8 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
             if (exportConfig == null || arrays == null || arrays.ElevationBands == null)
             {
@@ -57,7 +59,7 @@ namespace MapMaker.Shared.Export
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -79,34 +81,35 @@ namespace MapMaker.Shared.Export
             }
         }
 
-        public static void ExportLatitudeBandsPng(
+        public static void ExportLatitudeEnergyPng(
             HB_ExportConfig exportConfig,
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
-            if (exportConfig == null || arrays == null || arrays.LatitudeBands == null)
+            if (exportConfig == null || arrays == null || arrays.LatitudeEnergy01 == null)
             {
-                emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing export config or latitude bands; skipping latitude PNG.");
+                emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing export config or latitude energy; skipping latitude PNG.");
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
             try
             {
-                FillTiled(tex, width, height, exportConfig, (x, y) => ColorForLatitude((LatitudeBandType)arrays.LatitudeBands[(y * width) + x]));
+                FillTiled(tex, width, height, exportConfig, (x, y) => ColorForLatitudeEnergy(arrays.LatitudeEnergy01[(y * width) + x]));
 
                 if (exportConfig.ExportFlipVertical)
                 {
                     tex = FlipVertical(tex);
                 }
 
-                SavePng(tex, Path.Combine(path, "WorldPreview_02_LatitudeBands.png"));
-                emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", "Wrote WorldPreview_02_LatitudeBands.png");
+                SavePng(tex, Path.Combine(path, "WorldPreview_02_LatitudeEnergy.png"));
+                emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", "Wrote WorldPreview_02_LatitudeEnergy.png");
             }
             finally
             {
@@ -119,15 +122,16 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
-            if (exportConfig == null || arrays == null || arrays.ElevationBands == null || arrays.LatitudeBands == null)
+            if (exportConfig == null || arrays == null || arrays.ElevationBands == null || arrays.LatitudeEnergy01 == null)
             {
                 emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing export config or data; skipping stacked PNG with latitude.");
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -136,8 +140,8 @@ namespace MapMaker.Shared.Export
                 FillTiled(tex, width, height, exportConfig, (x, y) =>
                 {
                     var elevColor = ColorForElevation((ElevationBandFinal)arrays.ElevationBands[(y * width) + x]);
-                    var latColor = ColorForLatitude((LatitudeBandType)arrays.LatitudeBands[(y * width) + x]);
-                    return Color.Lerp(elevColor, latColor, 0.3f);
+                    var latColor = ColorForLatitudeEnergy(arrays.LatitudeEnergy01[(y * width) + x]);
+                    return Color.Lerp(elevColor, latColor, 0.25f);
                 });
 
                 if (exportConfig.ExportFlipVertical)
@@ -159,15 +163,18 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
-            if (exportConfig == null || arrays == null || arrays.IsDeepOcean == null || arrays.IsCoastalShelf == null)
+            var elevSrc = GetElevationForExport(arrays);
+
+            if (exportConfig == null || arrays == null || arrays.IsOcean == null || arrays.ElevationBands == null || arrays.IsDeepOcean == null || arrays.IsCoastalShelf == null)
             {
                 emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing export config or coast data; skipping coast PNG.");
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -194,7 +201,8 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
             if (exportConfig == null || arrays == null || arrays.ElevationBands == null)
             {
@@ -202,7 +210,7 @@ namespace MapMaker.Shared.Export
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -213,10 +221,10 @@ namespace MapMaker.Shared.Export
                     int idx = y * width + x;
                     var elevColor = ColorForElevation((ElevationBandFinal)arrays.ElevationBands[idx]);
 
-                    if (arrays.LatitudeBands != null)
+                    if (arrays.LatitudeEnergy01 != null)
                     {
-                        var latColor = ColorForLatitude((LatitudeBandType)arrays.LatitudeBands[idx]);
-                        elevColor = Color.Lerp(elevColor, latColor, 0.3f);
+                        var latColor = ColorForLatitudeEnergy(arrays.LatitudeEnergy01[idx]);
+                        elevColor = Color.Lerp(elevColor, latColor, 0.25f);
                     }
 
                     if (arrays.IsDeepOcean != null && arrays.IsCoastalShelf != null && arrays.IsOcean != null)
@@ -253,15 +261,18 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
+            var elevSrc = GetElevationForExport(arrays);
+
             if (exportConfig == null || arrays == null || arrays.RiverTypes == null)
             {
                 emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing export config or hydrology data; skipping hydrology PNG.");
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -292,7 +303,8 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
             if (exportConfig == null || arrays == null)
             {
@@ -300,7 +312,7 @@ namespace MapMaker.Shared.Export
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -330,7 +342,8 @@ namespace MapMaker.Shared.Export
             int width,
             int height,
             WorldArrays arrays,
-            LogEmitter emit)
+            LogEmitter emit,
+            string runExportRoot = null)
         {
             if (exportConfig == null || arrays == null)
             {
@@ -338,7 +351,7 @@ namespace MapMaker.Shared.Export
                 return;
             }
 
-            var path = GetExportPath(exportConfig);
+            var path = GetExportPath(exportConfig, runExportRoot);
             Directory.CreateDirectory(path);
 
             var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, height * exportConfig.ExportTilePixelSize, TextureFormat.RGBA32, false);
@@ -351,11 +364,11 @@ namespace MapMaker.Shared.Export
                     // Base: Elevation
                     var baseColor = ColorForElevation((ElevationBandFinal)arrays.ElevationBands[idx]);
                     
-                    // Overlay: Latitude (if available)
-                    if (arrays.LatitudeBands != null)
+                    // Overlay: Latitude energy (if available)
+                    if (arrays.LatitudeEnergy01 != null)
                     {
-                        var latColor = ColorForLatitude((LatitudeBandType)arrays.LatitudeBands[idx]);
-                        baseColor = Color.Lerp(baseColor, latColor, 0.25f);
+                        var latColor = ColorForLatitudeEnergy(arrays.LatitudeEnergy01[idx]);
+                        baseColor = Color.Lerp(baseColor, latColor, 0.20f);
                     }
                     
                     // Overlay: Coast (if available)
@@ -402,7 +415,8 @@ public static void ExportTopographicMap(
     int width,
     int height,
     WorldArrays arrays,
-    LogEmitter emit)
+    LogEmitter emit,
+            string runExportRoot = null)
 {
     if (exportConfig == null || arrays == null)
     {
@@ -410,9 +424,11 @@ public static void ExportTopographicMap(
         return;
     }
 
-    var path = GetExportPath(exportConfig);
+    var path = GetExportPath(exportConfig, runExportRoot);
     Directory.CreateDirectory(path);
 
+
+    var elevSrc = GetElevationForExport(arrays);
     var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, 
                             height * exportConfig.ExportTilePixelSize, 
                             TextureFormat.RGBA32, false);
@@ -445,7 +461,8 @@ public static void ExportTopographicMap(
             }
             
             // Terrain by elevation (grayscale)
-            float elev = arrays.ElevationRaw[idx];
+            var src = GetElevationForExport(arrays);
+                float elev = (src != null && idx < src.Length) ? src[idx] : 0f;
             float gray = elev;
             return new Color(gray, gray, gray, 1f);
         });
@@ -467,6 +484,201 @@ public static void ExportTopographicMap(
 
 
 /// <summary>
+/// Grayscale slope map (Module 1 Step 5). White = steep.
+/// </summary>
+public static void ExportSlopeMap(
+    HB_ExportConfig exportConfig,
+    int width,
+    int height,
+    WorldArrays arrays,
+    LogEmitter emit,
+    string runExportRoot = null)
+{
+    if (exportConfig == null || arrays == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing config");
+        return;
+    }
+
+    if (arrays.Slope01 == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Slope01 is null (Step 5 not run?)");
+        return;
+    }
+
+    var path = GetExportPath(exportConfig, runExportRoot);
+    Directory.CreateDirectory(path);
+
+    var tex = new Texture2D(width * exportConfig.ExportTilePixelSize,
+                            height * exportConfig.ExportTilePixelSize,
+                            TextureFormat.RGBA32, false);
+    try
+    {
+        FillTiled(tex, width, height, exportConfig, (x, y) =>
+        {
+            int idx = y * width + x;
+            float v = Mathf.Clamp01(arrays.Slope01[idx]);
+            return new Color(v, v, v, 1f);
+        });
+
+        var png = tex.EncodeToPNG();
+        File.WriteAllBytes(Path.Combine(path, "WorldPreview_Slope.png"), png);
+        emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "EXPORT", "Wrote WorldPreview_Slope.png");
+    }
+    finally
+    {
+        UnityEngine.Object.Destroy(tex);
+    }
+}
+
+
+/// <summary>
+/// Grayscale distance-to-coast map (Module 1 Step 5). Black = coastline, White = far inland.
+/// </summary>
+public static void ExportCoastDistanceMap(
+    HB_ExportConfig exportConfig,
+    int width,
+    int height,
+    WorldArrays arrays,
+    LogEmitter emit,
+    string runExportRoot = null)
+{
+    if (exportConfig == null || arrays == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing config");
+        return;
+    }
+
+    if (arrays.CoastDistance01 == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "CoastDistance01 is null (Step 5 not run?)");
+        return;
+    }
+
+    var path = GetExportPath(exportConfig, runExportRoot);
+    Directory.CreateDirectory(path);
+
+    var tex = new Texture2D(width * exportConfig.ExportTilePixelSize,
+                            height * exportConfig.ExportTilePixelSize,
+                            TextureFormat.RGBA32, false);
+    try
+    {
+        FillTiled(tex, width, height, exportConfig, (x, y) =>
+        {
+            int idx = y * width + x;
+            if (arrays.IsOcean != null && arrays.IsOcean[idx]) return new Color(0f, 0f, 0f, 1f);
+            float v = Mathf.Clamp01(arrays.CoastDistance01[idx]);
+            return new Color(v, v, v, 1f);
+        });
+
+        var png = tex.EncodeToPNG();
+        File.WriteAllBytes(Path.Combine(path, "WorldPreview_03_CoastDistance.png"), png);
+        emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "EXPORT", "Wrote WorldPreview_03_CoastDistance.png");
+    }
+    finally
+    {
+        UnityEngine.Object.Destroy(tex);
+    }
+}
+
+/// <summary>
+/// Grayscale aspect map (Module 1 Step 6). 0..1 angle of steepest descent (wrapped).
+/// </summary>
+public static void ExportAspectMap(
+    HB_ExportConfig exportConfig,
+    int width,
+    int height,
+    WorldArrays arrays,
+    LogEmitter emit,
+    string runExportRoot = null)
+{
+    if (exportConfig == null || arrays == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing config");
+        return;
+    }
+
+    if (arrays.Aspect01 == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Aspect01 is null (Step 6 not run?)");
+        return;
+    }
+
+    var path = GetExportPath(exportConfig, runExportRoot);
+    Directory.CreateDirectory(path);
+
+    var tex = new Texture2D(width * exportConfig.ExportTilePixelSize,
+                            height * exportConfig.ExportTilePixelSize,
+                            TextureFormat.RGBA32, false);
+    try
+    {
+        FillTiled(tex, width, height, exportConfig, (x, y) =>
+        {
+            int idx = y * width + x;
+            float v = Mathf.Clamp01(arrays.Aspect01[idx]);
+            return new Color(v, v, v, 1f);
+        });
+
+        var png = tex.EncodeToPNG();
+        File.WriteAllBytes(Path.Combine(path, "WorldPreview_Aspect.png"), png);
+        emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "EXPORT", "Wrote WorldPreview_Aspect.png");
+    }
+    finally
+    {
+        UnityEngine.Object.Destroy(tex);
+    }
+}
+
+/// <summary>
+/// Grayscale curvature map (Module 1 Step 6). 0.5 ~ flat, darker = valley, lighter = ridge.
+/// </summary>
+public static void ExportCurvatureMap(
+    HB_ExportConfig exportConfig,
+    int width,
+    int height,
+    WorldArrays arrays,
+    LogEmitter emit,
+    string runExportRoot = null)
+{
+    if (exportConfig == null || arrays == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing config");
+        return;
+    }
+
+    if (arrays.Curvature01 == null)
+    {
+        emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Curvature01 is null (Step 6 not run?)");
+        return;
+    }
+
+    var path = GetExportPath(exportConfig, runExportRoot);
+    Directory.CreateDirectory(path);
+
+    var tex = new Texture2D(width * exportConfig.ExportTilePixelSize,
+                            height * exportConfig.ExportTilePixelSize,
+                            TextureFormat.RGBA32, false);
+    try
+    {
+        FillTiled(tex, width, height, exportConfig, (x, y) =>
+        {
+            int idx = y * width + x;
+            float v = Mathf.Clamp01(arrays.Curvature01[idx]);
+            return new Color(v, v, v, 1f);
+        });
+
+        var png = tex.EncodeToPNG();
+        File.WriteAllBytes(Path.Combine(path, "WorldPreview_Curvature.png"), png);
+        emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "EXPORT", "Wrote WorldPreview_Curvature.png");
+    }
+    finally
+    {
+        UnityEngine.Object.Destroy(tex);
+    }
+}
+
+
+/// <summary>
 /// Shaded relief map with hillshading, rivers, and hydrologic features
 /// Add this to WorldExportPass.cs
 /// </summary>
@@ -475,7 +687,8 @@ public static void ExportShadedReliefMap(
     int width,
     int height,
     WorldArrays arrays,
-    LogEmitter emit)
+    LogEmitter emit,
+            string runExportRoot = null)
 {
     if (exportConfig == null || arrays == null)
     {
@@ -483,9 +696,11 @@ public static void ExportShadedReliefMap(
         return;
     }
 
-    var path = GetExportPath(exportConfig);
+    var path = GetExportPath(exportConfig, runExportRoot);
     Directory.CreateDirectory(path);
 
+
+    var elevSrc = GetElevationForExport(arrays);
     var tex = new Texture2D(width * exportConfig.ExportTilePixelSize, 
                             height * exportConfig.ExportTilePixelSize, 
                             TextureFormat.RGBA32, false);
@@ -496,10 +711,14 @@ public static void ExportShadedReliefMap(
             int idx = y * width + x;
             
             // Calculate hillshade (light from northwest)
-            float hillshade = CalculateHillshade(arrays.ElevationRaw, width, height, x, y);
+            float hillshade = CalculateHillshade(elevSrc, width, height, x, y);
             
             // Base terrain color (elevation-based with hillshade)
-            Color baseColor = GetTerrainColor(arrays.ElevationRaw[idx], hillshade);
+            var band = (ElevationBandFinal)arrays.ElevationBands[idx];
+            Color baseColor = ColorForElevation(band);
+            float shade = Mathf.Lerp(0.65f, 1.10f, hillshade);
+            baseColor *= shade;
+            baseColor.a = 1f;
             
             // Overlay hydrologic features
             
@@ -587,8 +806,8 @@ private static float CalculateHillshade(float[] elevation, int width, int height
 /// </summary>
 private static float GetElevationSafe(float[] elevation, int width, int height, int x, int y)
 {
-    if (x < 0 || x >= width || y < 0 || y >= height)
-        return 0f;
+    x = Mathf.Clamp(x, 0, width - 1);
+    y = Mathf.Clamp(y, 0, height - 1);
     return elevation[y * width + x];
 }
 
@@ -648,8 +867,273 @@ private static Color GetTerrainColor(float elevation, float hillshade)
     );
 }
 
-        private static string GetExportPath(HB_ExportConfig exportConfig)
+
+
+        public static void ExportLandMaskPng(
+            HB_ExportConfig exportConfig,
+            int width,
+            int height,
+            WorldArrays arrays,
+            LogEmitter emit,
+            string runExportRoot = null)
         {
+            if (exportConfig == null || arrays?.LandMask01 == null)
+            {
+                emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing land mask data; skipping land mask PNG.");
+                return;
+            }
+
+            var path = GetExportPath(exportConfig, runExportRoot);
+            Directory.CreateDirectory(path);
+
+            var tex = new Texture2D(
+                width * exportConfig.ExportTilePixelSize,
+                height * exportConfig.ExportTilePixelSize,
+                TextureFormat.RGBA32,
+                false);
+
+            try
+            {
+                FillTiled(tex, width, height, exportConfig, (x, y) =>
+                {
+                    int idx = y * width + x;
+                    float v = Mathf.Clamp01(arrays.LandMask01[idx]);
+                    // Ocean -> dark, Land -> bright
+                    return new Color(v, v, v, 1f);
+                });
+
+                if (exportConfig.ExportFlipVertical)
+                    tex = FlipVertical(tex);
+
+                SavePng(tex, Path.Combine(path, "WorldPreview_01_LandMask.png"));
+                emit?.Invoke(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", "Wrote WorldPreview_01_LandMask.png");
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+
+        public static void ExportElevationGrayscalePng(
+            HB_ExportConfig exportConfig,
+            int width,
+            int height,
+            WorldArrays arrays,
+            LogEmitter emit,
+            string runExportRoot = null)
+        {
+            var elevSrc = GetElevationForExport(arrays);
+            if (exportConfig == null || elevSrc == null)
+            {
+                emit(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing elevation data; skipping grayscale PNG.");
+                return;
+            }
+
+            var path = GetExportPath(exportConfig, runExportRoot);
+            Directory.CreateDirectory(path);
+
+            var tex = new Texture2D(
+                width * exportConfig.ExportTilePixelSize,
+                height * exportConfig.ExportTilePixelSize,
+                TextureFormat.RGBA32,
+                false);
+
+            try
+            {
+                float min = float.MaxValue;
+                float max = float.MinValue;
+
+                for (int i = 0; i < elevSrc.Length; i++)
+                {
+                    float v = arrays.ElevationRaw[i];
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+
+                float range = Mathf.Max(0.0001f, max - min);
+
+                FillTiled(tex, width, height, exportConfig, (x, y) =>
+                {
+                    float v = elevSrc[(y * width) + x];
+                    float n = (v - min) / range;
+                    return new Color(n, n, n, 1f);
+                });
+
+                if (exportConfig.ExportFlipVertical)
+                    tex = FlipVertical(tex);
+
+                SavePng(tex, Path.Combine(path, "WorldPreview_00_Elevation_Grayscale.png"));
+
+                emit(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG",
+                    $"Wrote WorldPreview_00_Elevation_Grayscale.png (min={min:F3}, max={max:F3})");
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+
+        public static void ExportPlatesPng(
+            HB_ExportConfig exportConfig,
+            int width,
+            int height,
+            WorldArrays arrays,
+            LogEmitter emit,
+            string runExportRoot = null)
+        {
+            if (exportConfig == null || arrays?.PlateId == null)
+            {
+                emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing plate data; skipping plates PNG.");
+                return;
+            }
+
+            var path = GetExportPath(exportConfig, runExportRoot);
+            Directory.CreateDirectory(path);
+
+            var tex = new Texture2D(
+                width * exportConfig.ExportTilePixelSize,
+                height * exportConfig.ExportTilePixelSize,
+                TextureFormat.RGBA32,
+                false);
+
+            try
+            {
+                FillTiled(tex, width, height, exportConfig, (x, y) =>
+                {
+                    int idx = y * width + x;
+                    ushort id = arrays.PlateId[idx];
+                    // Deterministic pseudo-color from id (no palette dependency)
+                    float r = ((id * 37) % 255) / 255f;
+                    float g = ((id * 91) % 255) / 255f;
+                    float b = ((id * 17) % 255) / 255f;
+                    return new Color(r, g, b, 1f);
+                });
+
+                if (exportConfig.ExportFlipVertical)
+                    tex = FlipVertical(tex);
+
+                SavePng(tex, Path.Combine(path, "WorldPreview_01_Plates.png"));
+                emit?.Invoke(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", "Wrote WorldPreview_01_Plates.png");
+            
+
+                // --- Debug exports (derived from PlateId) ---
+                // PlateBoundary01: 1 where neighbor plate id differs, else 0.
+                // PlateBoundaryDistance01: distance-to-boundary normalized to 0..1 (0 at boundary).
+                try
+                {
+                    float[] boundary01 = BuildPlateBoundaryMask01(arrays.PlateId, width, height);
+                    float[] boundaryDist01 = ComputeDistanceToMask01(boundary01, width, height, maxDistTiles: 256);
+
+                    ExportFloat01Png(exportConfig, width, height, boundary01, emit, path, "WorldPreview_01_PlateBoundary01.png");
+                    ExportFloat01Png(exportConfig, width, height, boundaryDist01, emit, path, "WorldPreview_01_PlateBoundaryDistance01.png");
+                }
+                catch (Exception ex)
+                {
+                    emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT",
+                        $"Failed debug plate exports: {ex.Message}");
+                }
+}
+            finally
+            {
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+
+        public static void ExportUpliftPng(
+            HB_ExportConfig exportConfig,
+            int width,
+            int height,
+            WorldArrays arrays,
+            LogEmitter emit,
+            string runExportRoot = null)
+        {
+            if (exportConfig == null || arrays?.Uplift01 == null)
+            {
+                emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT", "Missing uplift data; skipping uplift PNG.");
+                return;
+            }
+
+            var path = GetExportPath(exportConfig, runExportRoot);
+            Directory.CreateDirectory(path);
+
+            var tex = new Texture2D(
+                width * exportConfig.ExportTilePixelSize,
+                height * exportConfig.ExportTilePixelSize,
+                TextureFormat.RGBA32,
+                false);
+
+            try
+            {
+                FillTiled(tex, width, height, exportConfig, (x, y) =>
+                {
+                    int idx = y * width + x;
+                    float v = Mathf.Clamp01(arrays.Uplift01[idx]);
+                    // Uplift -> bright red, background -> dark
+                    return new Color(v, 0f, 0f, 1f);
+                });
+
+                if (exportConfig.ExportFlipVertical)
+                    tex = FlipVertical(tex);
+
+                SavePng(tex, Path.Combine(path, "WorldPreview_01_Uplift.png"));
+                emit?.Invoke(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", "Wrote WorldPreview_01_Uplift.png");
+            
+
+                // --- Debug exports (derived from LandMask01 + Uplift01) ---
+                // LandGate01: SmoothStep(0.10..0.85) of LandMask01 (matches elevation uplift gating).
+                // UpliftRaw01: uplift with land-gate removed (approx; still includes segmentation + uplift type).
+                try
+                {
+                    if (arrays.LandMask01 != null && arrays.LandMask01.Length == width * height)
+                    {
+                        float[] landGate01 = BuildLandGate01(arrays.LandMask01);
+                        ExportFloat01Png(exportConfig, width, height, landGate01, emit, path, "WorldPreview_01_LandGate01.png");
+
+                        float[] upliftRaw01 = BuildUpliftUngated01(arrays.Uplift01, landGate01);
+                        ExportFloat01Png(exportConfig, width, height, upliftRaw01, emit, path, "WorldPreview_01_UpliftRaw01.png");
+                    }
+                    else
+                    {
+                        emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT",
+                            "LandMask01 missing; skipping LandGate01/UpliftRaw01 debug exports.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    emit?.Invoke(LogLevel.WARN, LogContext.Driver, LogPhase.Export, "EXPORT",
+                        $"Failed debug uplift exports: {ex.Message}");
+                }
+}
+            finally
+            {
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+
+        
+        private static float[] GetElevationForExport(WorldArrays arrays)
+        {
+            if (arrays == null) return null;
+
+            // Prefer the snapshot captured after Module 1 for export consistency.
+            if (arrays.ElevationExport01 != null &&
+                arrays.ElevationRaw != null &&
+                arrays.ElevationExport01.Length == arrays.ElevationRaw.Length)
+            {
+                return arrays.ElevationExport01;
+            }
+
+            return arrays.ElevationRaw;
+        }
+
+private static string GetExportPath(HB_ExportConfig exportConfig, string runExportRoot)
+        {
+            if (!string.IsNullOrWhiteSpace(runExportRoot))
+            {
+                return Path.GetFullPath(runExportRoot);
+            }
+
+
             // If ExportFolderName is an absolute path (e.g., starts with drive letter or /), use it directly.
             // Otherwise, use it as a subdirectory under the project's Logs folder.
             if (Path.IsPathRooted(exportConfig.ExportFolderName))
@@ -716,26 +1200,47 @@ private static Color GetTerrainColor(float elevation, float hillshade)
             };
         }
 
+        private static Color ColorForLatitudeEnergy(float latitudeEnergy01)
+        {
+            float v = Mathf.Clamp01(latitudeEnergy01);
+            return new Color(v, v, v, 1f);
+        }
+
         private static Color ColorForCoast(WorldArrays arrays, int x, int y, int width)
         {
             int idx = y * width + x;
 
-            if (arrays.IsInlandLake != null && arrays.IsInlandLake[idx])
+            bool isOcean = arrays.IsOcean != null && arrays.IsOcean[idx];
+
+            // Inland seas (edge-disconnected ocean components), if provided
+            if (isOcean && arrays.IsInlandLake != null && arrays.IsInlandLake[idx])
             {
-                return new Color(0.4f, 0.7f, 0.9f, 1f);
+                // Cyan tint to make inland seas obvious
+                return new Color(0.35f, 0.70f, 0.90f, 1f);
             }
 
-            if (arrays.IsDeepOcean[idx])
+            if (isOcean)
             {
-                return new Color(0.0f, 0.2f, 0.4f, 1f);
+                // Deep ocean
+                if (arrays.IsDeepOcean != null && arrays.IsDeepOcean[idx])
+                    return new Color(0.02f, 0.08f, 0.25f, 1f);
+
+                // Coastal shelf
+                if (arrays.IsCoastalShelf != null && arrays.IsCoastalShelf[idx])
+                    return new Color(0.20f, 0.45f, 0.90f, 1f);
+
+                // Regular ocean
+                return new Color(0.05f, 0.20f, 0.55f, 1f);
             }
 
-            if (arrays.IsCoastalShelf[idx])
+            // Land: render from authoritative elevation bands so it matches WorldPreview_01_ElevationBands.png
+            if (arrays.ElevationBands != null && arrays.ElevationBands.Length > idx)
             {
-                return new Color(0.4f, 0.7f, 1.0f, 1f);
+                return ColorForElevation((ElevationBandFinal)arrays.ElevationBands[idx]);
             }
 
-            return new Color(0.5f, 0.5f, 0.5f, 1f);
+            // Fallback
+            return new Color(0.50f, 0.50f, 0.50f, 1f);
         }
 
         /// <summary>
@@ -787,7 +1292,8 @@ private static Color GetTerrainColor(float elevation, float hillshade)
             // If in a basin (lake)
             if (arrays.IsLake != null && arrays.IsLake[idx])
             {
-                float elev = arrays.ElevationRaw[idx];
+                var src = GetElevationForExport(arrays);
+                float elev = (src != null && idx < src.Length) ? src[idx] : 0f;
                 float oceanLevel = 0.15f; // Approximate ocean level
                 
                 // Check lowest edge elevation if available
@@ -813,7 +1319,159 @@ private static Color GetTerrainColor(float elevation, float hillshade)
             return new Color(0.5f, 0.5f, 0.5f, 1f); // Gray fallback
         }
 
-        private static Texture2D FlipVertical(Texture2D input)
+        
+        // =====================================================================================
+        // Debug helpers (derived exports; no new WorldArrays fields required)
+        // =====================================================================================
+
+        private static float[] BuildPlateBoundaryMask01(ushort[] plateId, int width, int height)
+        {
+            int n = width * height;
+            var boundary01 = new float[n];
+
+            for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+            {
+                int idx = y * width + x;
+                ushort id = plateId[idx];
+
+                bool boundary = false;
+                if (x > 0 && plateId[idx - 1] != id) boundary = true;
+                else if (x < width - 1 && plateId[idx + 1] != id) boundary = true;
+                else if (y > 0 && plateId[idx - width] != id) boundary = true;
+                else if (y < height - 1 && plateId[idx + width] != id) boundary = true;
+
+                boundary01[idx] = boundary ? 1f : 0f;
+            }
+
+            return boundary01;
+        }
+
+        /// <summary>
+        /// Compute distance to a 0/1 mask (mask=1 are "sources").
+        /// Returns 0..1 where 0 means on-mask (distance 0) and 1 means >= maxDistTiles away.
+        /// </summary>
+        private static float[] ComputeDistanceToMask01(float[] mask01, int width, int height, int maxDistTiles)
+        {
+            int n = width * height;
+            const int INF = 1_000_000;
+
+            var dist = new int[n];
+            for (int i = 0; i < n; i++) dist[i] = INF;
+
+            var q = new System.Collections.Generic.Queue<int>(Mathf.Max(32, n / 32));
+
+            // init with sources
+            for (int i = 0; i < n; i++)
+            {
+                if (mask01[i] >= 0.5f)
+                {
+                    dist[i] = 0;
+                    q.Enqueue(i);
+                }
+            }
+
+            // BFS in 4-neighborhood
+            while (q.Count > 0)
+            {
+                int idx = q.Dequeue();
+                int x = idx % width;
+                int y = idx / width;
+
+                int d0 = dist[idx];
+                int d1 = d0 + 1;
+                if (d1 > maxDistTiles) continue;
+
+                Visit(x - 1, y);
+                Visit(x + 1, y);
+                Visit(x, y - 1);
+                Visit(x, y + 1);
+
+                void Visit(int nx, int ny)
+                {
+                    if ((uint)nx >= (uint)width || (uint)ny >= (uint)height) return;
+                    int ni = ny * width + nx;
+                    if (dist[ni] <= d1) return;
+                    dist[ni] = d1;
+                    q.Enqueue(ni);
+                }
+            }
+
+            float inv = 1f / Mathf.Max(1, maxDistTiles);
+            var out01 = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = (dist[i] >= INF) ? 1f : Mathf.Clamp01(dist[i] * inv);
+                out01[i] = t;
+            }
+            return out01;
+        }
+
+        private static float[] BuildLandGate01(float[] landMask01)
+        {
+            int n = landMask01.Length;
+            var gate = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = Mathf.InverseLerp(0.10f, 0.85f, Mathf.Clamp01(landMask01[i]));
+                // SmoothStep
+                t = t * t * (3f - 2f * t);
+                gate[i] = t;
+            }
+            return gate;
+        }
+
+        /// <summary>
+        /// Approximate "raw uplift" by removing the land gate (but not segmentation / uplift-type scaling).
+        /// </summary>
+        private static float[] BuildUpliftUngated01(float[] uplift01, float[] landGate01)
+        {
+            int n = uplift01.Length;
+            var raw = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float g = Mathf.Max(1e-6f, landGate01[i]);
+                raw[i] = Mathf.Clamp01(uplift01[i] / g);
+            }
+            return raw;
+        }
+
+        private static void ExportFloat01Png(
+            HB_ExportConfig exportConfig,
+            int width,
+            int height,
+            float[] values01,
+            LogEmitter emit,
+            string exportPath,
+            string fileName)
+        {
+            var tex = new Texture2D(
+                width * exportConfig.ExportTilePixelSize,
+                height * exportConfig.ExportTilePixelSize,
+                TextureFormat.RGBA32,
+                false);
+
+            try
+            {
+                FillTiled(tex, width, height, exportConfig, (x, y) =>
+                {
+                    float v = Mathf.Clamp01(values01[(y * width) + x]);
+                    return new Color(v, v, v, 1f);
+                });
+
+                if (exportConfig.ExportFlipVertical)
+                    tex = FlipVertical(tex);
+
+                SavePng(tex, Path.Combine(exportPath, fileName));
+                emit?.Invoke(LogLevel.INFO, LogContext.Driver, LogPhase.Export, "PNG", $"Wrote {fileName}");
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+
+private static Texture2D FlipVertical(Texture2D input)
         {
             int w = input.width;
             int h = input.height;

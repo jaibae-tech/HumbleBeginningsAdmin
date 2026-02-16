@@ -1,119 +1,272 @@
-# ModuleSpec — 02 Latitude
+ModuleSpec.md (Updated)
+Module 2 – Latitude
+Purpose
 
-## Overview
-Module 2 generates latitude bands (Arctic, Temperate, Tropical) based on Y-coordinate with Perlin noise warping for natural boundary variation. Supports 3-band mode for small maps and 5-band mode for large maps.
+Generates a continuous latitude energy field representing large-scale solar energy distribution across the world.
 
-## ScriptableObject Inputs
+This field serves as a climate driver, not a classification system.
 
-### HB_LatitudeConfig
-**3-Band Mode (Map Height < Threshold):**
-- ThreeBandArcticPercent: Percentage of map for Arctic zones (default 15%)
-- ThreeBandTemperatePercent: Percentage for Temperate zone (default 60%)
-- ThreeBandTropicalPercent: Percentage for Tropical zone (default 25%)
+Inputs
 
-**5-Band Mode (Map Height >= Threshold):**
-- FiveBandNorthArcticPercent: North polar region (default 12%)
-- FiveBandNorthTemperatePercent: North temperate zone (default 29%)
-- FiveBandTropicalPercent: Equatorial zone (default 18%)
-- FiveBandSouthTemperatePercent: South temperate zone (default 29%)
-- FiveBandSouthArcticPercent: South polar region (default 12%)
+Latitude uses only map geometry + configuration values.
 
-**Band Warping:**
-- BandWarpNoiseScale: Scale for Perlin noise that warps boundaries (default 0.02)
-- BandWarpStrength: Maximum offset as fraction of map height (default 0.05 = ±5%)
+It does not depend on elevation, terrain shape, or noise layers.
 
-### HB_MapConfig (from pipeline)
-- MapWidth/MapHeight/RootSeed
-- ThreeToFiveBandHeightThreshold: Height threshold for band mode selection (default 1500)
+1. Map Dimensions
 
-### HB_ExportConfig (from pipeline)
-- ExportFolderName/ExportTilePixelSize/ExportFlipVertical
+Map Height → Defines gradient direction
 
-## Runtime Inputs
+South Edge → Warmest region
 
-### WorldArrays
-- LatitudeBands (written)
+North Edge → Coldest region
 
-### SeedContext
-- LatitudeRng (used for Perlin noise offsets)
+Latitude energy decreases smoothly from south → north.
 
-## Algorithm
+2. Seed Context
 
-### Band Mode Selection
-```
-if (MapHeight < ThreeToFiveBandHeightThreshold):
-    use 3-band mode (Arctic/Temperate/Tropical)
-else:
-    use 5-band mode (Arctic/Temperate/Tropical/Temperate/Arctic)
-```
+Used only for:
 
-### Band Assignment
-1. Normalize Y-coordinate: `normalizedY = y / (height - 1)` (0 = bottom/south, 1 = top/north)
-2. Apply Perlin warp: `warp = Perlin((x + ox) * scale, (y + oy) * scale)`
-3. Add offset: `adjustedY = clamp(normalizedY + warpOffset, 0, 1)`
-4. Assign band based on threshold ranges
+Optional global warp phase offset
 
-### 3-Band Layout (South to North)
-```
-Y = 0 (bottom)    → Tropical (25%)
-                  → Temperate (60%)
-Y = Height-1 (top) → Arctic (15%)
-```
+No tile-scale noise is applied.
 
-### 5-Band Layout (South to North, Equator at Center)
-```
-Y = 0 (bottom)     → Arctic (12%)
-                   → Temperate (29%)
-Y = Height/2       → Tropical (18%)  ← Equator
-                   → Temperate (29%)
-Y = Height-1 (top) → Arctic (12%)
-```
+3. Configuration Values
+Latitude Min 01 (Lmin)
 
-## Validation (WARN only)
-- Percentage sums for 3-band and 5-band modes should equal 1.0 (±0.05 tolerance)
-- BandWarpNoiseScale must be positive
-- BandWarpStrength should be 0-0.2
+Lower bound of latitude energy.
 
-## Outputs
-- WorldArrays.LatitudeBands[] populated with LatitudeBandType enum values
+Layman’s explanation:
+Prevents the far north from becoming unrealistically frozen.
 
-## Exports
-- WorldPreview_02_LatitudeBands.png (Arctic=White, Temperate=Green, Tropical=Yellow)
-- WorldPreview_Stacked.png (updated to include latitude overlay)
+Effects:
 
-## Dependencies
-- **Inputs:** None (standalone module, only uses map dimensions and seed)
-- **Outputs Used By:** Module 7 (Biomes) for biome assignment logic
+Raises minimum temperature potential
 
-## Performance Notes
-- Linear O(width × height) complexity
-- Perlin noise called once per tile
-- No neighbor analysis or pathfinding
+Softens extreme cold climates
 
-## Design Rationale
+Higher values → Milder world
 
-### Why 3 vs 5 Bands?
-Small maps (< 1500 tiles height) don't need full biome diversity. 3-band mode simplifies generation and prevents tiny, unplayable biome regions.
+Typical range: 0.10 – 0.25
 
-### Why Perlin Warping?
-Hard latitude lines look artificial. Perlin warping creates natural-looking climate zone boundaries that interact organically with coastlines and elevation.
+Latitude Max 01 (Lmax)
 
-### Why Equator at Center (5-band)?
-Symmetrical layout prevents gameplay bias toward one map edge. Players can start in temperate zones on either side of the equator.
+Upper bound of latitude energy.
 
-## Usage Example
-```csharp
-var cfg = Resources.Load<HB_LatitudeConfig>("Configs/HB_Latitude_Default");
-var seed = new SeedContext(mapConfig.RootSeed);
-var emit = /* logging emitter */;
+Layman’s explanation:
+Prevents the far south from becoming unrealistically tropical.
 
-var gen = new LatitudeGenerator(cfg, mapConfig.ThreeToFiveBandHeightThreshold, seed, emit);
-gen.Execute(worldArrays);
+Effects:
 
-LatitudeValidate.LogBandDistribution(worldArrays, emit);
-```
+Caps maximum heating potential
 
-## Known Limitations
-- Latitude is purely Y-coordinate based (no planetary curvature simulation)
-- Warp strength is global (cannot vary by region)
-- Band percentages must be manually adjusted if they don't sum to 1.0
+Reduces extreme heat
+
+Lower values → Cooler world overall
+
+Typical range: 0.80 – 0.95
+
+Curve Power
+
+Controls gradient shaping.
+
+Layman’s explanation:
+Changes how quickly climate shifts from warm → cold.
+
+Effects:
+
+1.0 → Linear transition (default)
+
+>1.0 → Expands mid-latitudes (more temperate world)
+
+<1.0 → Stronger polar contrast
+
+Safe tuning range: 0.8 – 1.5
+
+Enable Global Warp
+
+Applies a single smooth planetary skew.
+
+Layman’s explanation:
+Simulates that the map slice is not perfectly aligned to latitude lines.
+
+Effects:
+
+Introduces subtle diagonal bias
+
+No local noise or fragmentation
+
+Purely large-scale variation
+
+Recommended default: Disabled
+
+Warp Amplitude
+
+Strength of global skew.
+
+Layman’s explanation:
+How tilted the climate appears.
+
+Effects:
+
+Small values → Almost invisible (preferred)
+
+Large values → Obvious diagonal energy shift
+
+Safe range: 0.01 – 0.05
+
+Season Amp Min 01
+
+Minimum seasonal variation.
+
+Layman’s explanation:
+How much climates change over time in warm regions.
+
+Effects:
+
+Higher values → Less stable climates
+
+Lower values → Stable warm zones
+
+Season Amp Max 01
+
+Maximum seasonal variation.
+
+Layman’s explanation:
+How harsh seasonal swings become in cold regions.
+
+Effects:
+
+Higher values → Strong winters/summers
+
+Lower values → Gentle seasonal change
+
+Season Latitude Power
+
+Controls how seasonal strength increases toward the north.
+
+Layman’s explanation:
+How quickly seasons become severe as climates cool.
+
+Effects:
+
+Higher → Strong northern seasonality
+
+Lower → Uniform seasons
+
+Outputs
+
+Module 2 writes continuous fields into WorldArrays.
+
+LatitudeEnergy01[]
+
+Primary output.
+
+Range → [Lmin … Lmax]
+
+Meaning → Relative climate energy baseline
+
+Spatial behavior → Smooth south → north gradient
+
+Used later by:
+
+Temperature modeling
+
+Moisture systems
+
+Habitat suitability logic
+
+Ecology & bestiary rules
+
+SeasonalAmplitude01[] (if enabled)
+
+Secondary output.
+
+Range → [SeasonAmpMin … SeasonAmpMax]
+
+Meaning → Seasonal temperature swing potential
+
+Spatial behavior → Stronger toward colder latitudes
+
+Used later by:
+
+Runtime seasonal modulation
+
+Weather/climate severity logic
+
+PNG Outputs
+WorldPreview_02_LatitudeEnergy.png
+
+Visualization of latitude energy field.
+
+Characteristics:
+
+Grayscale gradient
+
+South = brighter (warmer)
+
+North = darker (colder)
+
+No bands or stripes expected
+
+Purpose:
+
+Debug validation only
+
+Should appear visually simple
+
+Stacked Preview Exports (if enabled)
+
+Latitude energy may tint composite previews but does not introduce new terrain colors.
+
+Tuning Guidelines (Practical)
+To make the world warmer overall:
+
+Increase Latitude Min 01
+
+Increase Latitude Max 01
+
+To make the world colder overall:
+
+Decrease Latitude Max 01
+
+Decrease Latitude Min 01
+
+To expand temperate regions:
+
+Increase Curve Power
+
+To increase climate asymmetry:
+
+Enable Global Warp
+
+Keep amplitude small
+
+To exaggerate seasons:
+
+Increase Season Amp Max 01
+
+To soften seasons:
+
+Reduce Season Amp Max 01
+
+Expected Visual Behavior
+
+Correct output should show:
+
+Perfectly smooth gradient
+
+No visible noise texture
+
+No contour banding
+
+No abrupt transitions
+
+If artifacts appear, the defect is almost always:
+
+Quantization
+
+Incorrect normalization
+
+Accidental noise injection
+
+Coordinate inversion

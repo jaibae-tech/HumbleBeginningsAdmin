@@ -1,0 +1,4 @@
+repository "HumbleBeginningsAdmin/HumbleBeginningsAdmin@2475894586315@cloud"
+  path "/"
+    br "/main"
+    co "/main"

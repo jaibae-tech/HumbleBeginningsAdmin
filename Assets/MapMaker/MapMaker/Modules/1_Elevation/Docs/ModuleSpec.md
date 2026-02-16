@@ -1,212 +1,238 @@
-# ModuleSpec — 01 Elevation
+# Module 1 Spec — Elevation
 
 ## Purpose
-Generate base terrain elevation using Perlin noise combined with continental gradients.
-Creates realistic continents that flow from biased edge(s) toward the interior, with natural terrain variation.
 
-## ScriptableObject Inputs
+Module 1 generates the world’s **continuous elevation field** plus supporting fields (plates/uplift/derivatives) used by later modules.
 
-### HB_ElevationConfig
-**Noise Parameters:**
-- NoiseScale: Perlin sampling scale (default: 120)
-- Octaves: Number of noise octaves 1-8 (default: 4)
-- Persistence: Amplitude falloff per octave 0.1-1 (default: 0.5)
-- Lacunarity: Frequency increase per octave 1-4 (default: 2.0)
+This module is **scale-aware**:
+- Feature sizes are expressed in **miles**.
+- Seed counts are expressed as **densities** (per million square miles) and derived per-map.
 
-**Elevation Bands (must sum to 1.0):**
-- OceanTotalPercent: Combined DeepOcean + Ocean (default: 0.15)
-- OceanMaxPercent: Maximum ocean for validation (default: 0.40)
-- DeepOceanShareWithinOcean: Fraction of ocean that is deep 0-1 (default: 0.30)
-- LowlandPercent: (default: 0.40)
-- HighlandsPercent: (default: 0.23)
-- LowMountainsPercent: (default: 0.14)
-- HighMountainsPercent: (default: 0.08)
+## Inputs
 
-**Continental Gradient:**
-- EdgeBias: Which edge(s) have land (None/West/East/North/South/All)
-- ContinentalGradientStrength: 0-2, strength of continent (0=island, 1=moderate, 2=strong)
-- ContinentalGradientReach: 0.1-1, how far gradient extends (0.1=coastal, 1=full span)
-- ContinentalGradientPower: 0.5-3, gradient curve shape (1=linear, >1=sharp)
+- `HB_PipelineConfig` (width/height, seed, export toggles)
+- `HB_ElevationConfig` (all tunable knobs for Module 1)
 
-**Edge Ocean Guarantee:**
-- OppositeEdgeOceanMargin: Tiles of guaranteed ocean at opposite edge (0-20)
+## Outputs (WorldArrays)
 
-**Coastline Variation:**
-- CoastlineNoiseScale: Scale for coastline irregularity noise (default: 0.02)
-- CoastlineNoiseStrength: 0-0.5, strength of coastal irregularity (default: 0.15)
+- `ElevationRaw : float[]`
+- `ElevationBands : ElevationBandFinal[]`
+- `LandMask01 : float[]`
+- `PlateId : ushort[]`
+- `Uplift01 : float[]`
+- `Ruggedness01 : float[]`
+- `IsOcean / IsDeepOcean / IsCoastalShelf : bool[]`
+- `Slope01 / Aspect01 / Curvature01 / CoastDistance01 : float[]`
 
-### HB_MapConfig (from pipeline)
-- MapWidth: Map width in tiles
-- MapHeight: Map height in tiles
-- RootSeed: Master seed for deterministic generation
+## Core pipeline (steps 1–8)
 
-### HB_ExportConfig (from pipeline)
-- ExportFolderName: Where to save PNG exports
-- ExportTilePixelSize: Pixels per tile in exports
-- ExportFlipVertical: Whether to flip Y-axis in exports
+1. Macro scaffolding (land mask + plates + uplift)
+2. Coastline resolution (sea-level percentile + fade/carve + shelf)
+3. Field conditioning (clamp/remap + macro-safe smoothing)
+4. Ocean connectivity (remove inland seas; no inland water after Module 1)
+5. Relief coherence (foothills; reduce harsh adjacency)
+6. Basin embedding (depressions + rims; hydrology scaffolding)
+7. Micro-relief (small variation; update ruggedness)
+8. Final preparation (derivatives + stability + exports)
 
-## Runtime Inputs
+---
 
-### WorldArrays
-- ElevationRaw (written): Raw elevation values 0-1
-- ElevationBands (written): Discrete elevation bands (DeepOcean/Ocean/Lowland/Highlands/LowMountains/HighMountains)
+## HB_ElevationConfig knobs
 
-### SeedContext
-- ElevationRng: RNG stream for deterministic noise offsets
+**Ranges below are guidance** (not enforced unless attributes exist in code). Defaults are the values currently in `HB_ElevationConfig.cs`.
 
-## Algorithm
+### World scale
 
-### Phase 1: Raw Elevation Generation (ElevationGenerator)
-For each tile (x, y):
-1. **Sample base Perlin noise**: Multi-octave noise for terrain variation
-2. **Compute continental gradient**: Based on EdgeBias direction
-   - West bias: High at x=0 (west edge), low at x=width-1 (east edge)
-   - East bias: High at x=width-1, low at x=0
-   - North bias: High at y=height-1 (north edge), low at y=0 (south edge)
-   - South bias: High at y=0, low at y=height-1
-   - All bias: High at all edges, low at center (ring continent)
-   - None: Neutral (pure noise, archipelago mode)
-3. **Combine noise + gradient**: elevation = noise * 0.4 + gradient * 0.6
-4. **Add coastline variation**: Modulate transition zone with additional noise
-5. **Apply ocean margin**: Guarantee ocean at opposite edge via smooth falloff
+- **TileSizeMiles** (default **1.0**, suggested **0.25–2.0**)
+  - Miles per tile. Changing this changes the world’s real-world scale while keeping tile resolution fixed.
 
-Result: ElevationRaw[] contains values 0-1 representing terrain height
+- **MacroCellSizeMiles** (default **12**, suggested **8–24**)
+  - Controls the coarse crust grid resolution.
+  - Lower = more detail in macro structure; higher = smoother, larger features.
 
-### Phase 2: Band Assignment (ElevationBandAssigner)
-1. Normalize band percentages to sum to 1.0
-2. Compute quantile thresholds for each band based on target percentages
-3. Assign each tile to a discrete band based on its raw elevation value
+### Sea / coast
 
-Result: ElevationBands[] contains discrete terrain types
+- **OceanPercent** (default **0.18**, suggested **0.15–0.35**)
+  - Percent of tiles classified as ocean via percentile sea-level.
+  - Higher = more water, smaller continents.
 
-## Validation (WARN only)
-- Count of LowMountains+HighMountains adjacent to Ocean/DeepOcean
-- Log if percentages don't sum to 1.0
-- Log if opposite edge has land touching it
+- **NoInlandWaterAfterElevation** (default **true**)
+  - Forces all ocean tiles to connect to the map edge by lifting inland seas above sea level.
 
-## Exports
-- WorldPreview_01_ElevationBands.png: Color-coded elevation bands
-- WorldPreview_Stacked.png: Cumulative layer visualization (excluding latitude)
+- **EdgeOceanWidthMiles** (default **0**, suggested **0–200**)
+  - Optional edge bias for open-ocean framing.
+  - 0 means land may touch edges.
 
-## How EdgeBias Creates Different Worlds
+- **CoastFadeMiles** (default **10**, suggested **0–25**)
+  - Softens elevation near sea-level to create a gentler coastal transition.
 
-### EdgeBias = West
-- **Landmass**: Starts at west edge (x=0), extends eastward
-- **Ocean**: Concentrated at east edge
-- **Result**: Continent flowing west → east
-- **Use Case**: Players start at west coast, travel east inland to higher elevations
+- **CoastCarveStrength** (default **0.35**, suggested **0–0.45**)
+  - Carves bays/peninsulas into the coastline.
 
-### EdgeBias = East
-- **Landmass**: Starts at east edge, extends westward
-- **Ocean**: Concentrated at west edge
-- **Result**: Continent flowing east → west
+- **CoastCarveScaleMiles** (default **60**, suggested **40–300**)
+  - Larger = broader bays/peninsulas; smaller = more jagged micro-coast.
 
-### EdgeBias = All
-- **Landmass**: Starts at all four edges, extends toward center
-- **Ocean**: Can be in center OR landmass closes to form solid continent (depends on ContinentalGradientReach)
-- **Result**: Ring continent or solid central landmass
-- **Use Case**: Island continent surrounded by ocean
+- **ShelfWidthMiles** (default **25**, suggested **10–80**)
+  - Continental shelf width before the drop to deep ocean.
 
-### EdgeBias = None
-- **Landmass**: Pure noise distribution (archipelago)
-- **Ocean**: Scattered throughout
-- **Result**: Many islands of various sizes
-- **Use Case**: Naval gameplay, scattered island chains
+- **OceanDepthCurvePower** (default **1.8**, suggested **1.2–2.4**)
+  - Higher = sharper shelf break / faster deepening; lower = smoother bathymetry.
 
-## Parameter Tuning Guide
+### Macro landmass shaping
 
-### For Solid Continent (West/East/North/South):
-```
-ContinentalGradientStrength = 1.2
-ContinentalGradientReach = 0.85
-ContinentalGradientPower = 1.5
-OppositeEdgeOceanMargin = 5
-CoastlineNoiseStrength = 0.15
-```
+- **CrustOriginDensity** (default **1.2**, suggested **0.4–2.0**)
+  - Number of macro land origins per million square miles.
+  - Lower = fewer, larger continents; higher = more fragmented land.
 
-### For Ring Continent (All):
-```
-ContinentalGradientStrength = 1.0
-ContinentalGradientReach = 0.6  # Don't reach all the way to center
-ContinentalGradientPower = 1.2
-OppositeEdgeOceanMargin = 5
-CoastlineNoiseStrength = 0.2  # More irregular for interesting shape
-```
+- **CrustOriginMajorAxisMiles** (default **280**, suggested **120–500**)
+- **CrustOriginMinorAxisMiles** (default **160**, suggested **80–350**)
+  - Size of macro land “blobs” used to seed the crust.
 
-### For Archipelago (None):
-```
-ContinentalGradientStrength = 0
-# Other gradient params ignored
-CoastlineNoiseStrength = 0.3  # High variation for many small islands
-```
+- **CrustOriginAxisJitter** (default **0.35**, suggested **0–0.6**)
+  - Adds irregularity to blob shapes (higher = less circular).
 
-## Design Rationale
+- **CrustCenterPull** (default **0.35**, suggested **0–0.6**)
+  - Pulls landmass inward (helps avoid edge-hugging).
+  - Too high can create overly centered continents.
 
-### Why Combine Noise + Gradient?
-- **Noise alone**: Creates random islands with no directional flow
-- **Gradient alone**: Creates boring linear transitions
-- **Combined**: Realistic continents with natural terrain variation
+- **MacroWarpStrength** (default **0.35**, suggested **0–0.5**)
+- **MacroWarpScaleMiles** (default **220**, suggested **120–700**)
+  - Warps the macro crust field.
+  - Strength controls intensity; scale controls the size of warps.
 
-The 40/60 split (40% noise, 60% gradient) ensures:
-- Gradient dominates for overall continent shape
-- Noise provides enough variation for interesting terrain
-- Coastlines are natural and irregular (not straight lines)
+- **ContinentalTiltDirection** (default **(0.7, -0.2)**)
+- **ContinentalTiltStrength** (default **0.0**, suggested **0–0.25**)
+  - Optional global tilt (can bias elevation N/S or along a prevailing direction).
 
-### Why Coastline Noise Layer?
-Creates realistic irregular coastlines by varying elevation in the transition zone.
-Without it, coastlines would follow the smooth gradient curve too closely.
+### Islands
 
-### Why Opposite Edge Ocean Margin?
-Guarantees that land never touches forbidden edges, even with high noise rolls.
-This prevents:
-- Land "wrapping around" the map edge
-- Disconnected landmasses later removed by Coast module
-- Confusing map boundaries
+- **IslandFractionOfLand** (default **0.08**, suggested **0–0.12**)
+  - Target fraction of land area that may become islands.
 
-### Why Power Curve for Gradient?
-Allows fine control over continent shape:
-- Power < 1: Gentle slope (coastal plains extend far inland)
-- Power = 1: Linear gradient
-- Power > 1: Sharp drop-off (steep coastal mountains, then plateau)
+- **MaxIslandDistanceFromMainMiles** (default **160**, suggested **60–350**)
+  - How far islands may spawn from the main landmass.
 
-## Integration with Downstream Modules
+- **MaxIslandAreaMiles2** (default **6000**, suggested **200–12000**)
+  - Caps individual island size.
 
-### Module 2 (Latitude)
-- Reads: Nothing from Elevation
-- Independent: Assigns latitude bands based on Y-coordinate only
+- **ArchipelagoClustering** (default **0.5**, suggested **0–1**)
+  - Higher clusters islands into archipelagos.
 
-### Module 3 (Coast)
-- Reads: ElevationBands[]
-- Classifies: DeepOcean, Ocean, CoastalShelf, InlandLakes
-- Note: With proper gradient, coast module should NOT need to remove edge-touching landmasses
+### Plates and uplift
 
-### Module 5 (Hydrology)
-- Reads: ElevationBands[]
-- Creates: Rivers and lakes WITHIN the landmass
-- Note: Elevation creates NO inland seas - those are added by Hydrology
+- **PlateDensity** (default **2.0**, suggested **0.5–6.0**)
+  - Plates per million square miles.
+  - Higher = more boundaries, more ranges (can get noisy if too high).
 
-## Known Limitations
+- **PlateMinSeparationMiles** (default **120**, suggested **60–220**)
+  - Prevents plate seeds from clustering.
 
-### Perlin Noise Periodicity
-Unity's Perlin noise repeats at large coordinates. For very large maps (>4000 tiles), 
-patterns may repeat. Solution: Use multiple noise layers with different offsets.
+- **PlateSpeedMin / PlateSpeedMax** (defaults **0.35 / 1.15**, suggested **0–2.0**)
+  - Speed controls relative boundary intensity.
 
-### Quantile-Based Band Assignment
-If noise + gradient creates very flat terrain (all values clustered), 
-band assignment may not hit target percentages exactly. Solution: Increase noise octaves
-or adjust ContinentalGradientStrength.
+- **BoundaryWidthMiles** (default **80**, suggested **40–260**)
+  - Width of tectonic boundary influence.
+  - Wider = broader mountain belts; narrower = sharper ridges.
 
-### Edge Cases
-- All ocean map: Possible if ContinentalGradientStrength = 0 and low noise
-- All land map: Possible if ContinentalGradientStrength >> 2 and high noise
-- Validation will warn but not block these cases
+- **BoundarySegmentation** (default **0.45**, suggested **0–0.9**)
+- **BoundarySegmentationScaleMiles** (default **140**, suggested **80–400**)
+  - Breaks continuous ranges into segments.
 
-## Performance Notes
-- Generation: O(W × H) single pass
-- Band Assignment: O(W × H log(W × H)) due to sorting for quantiles
-- Typical 1000×1000 map: ~50ms total
+- **BoundaryConvergenceEpsilon** (default **0.15**, suggested **0.05–0.25**)
+  - Threshold to decide if boundary is convergent/divergent/transform.
 
-## Changelog
-- 2026-02-07: Rewrote to use noise + continental gradients instead of cellular growth
-- 2026-02-06: Added directional growth (REMOVED - overcomplicated)
-- 2026-02-05: Initial noise-based implementation
+- **ConvergentUpliftStrength** (default **0.95**, suggested **0.2–1.4**)
+- **DivergentUpliftStrength** (default **0.18**, suggested **0–0.6**)
+- **TransformUpliftStrength** (default **0.45**, suggested **0–0.9**)
+  - Raise/lower strength by boundary type.
+
+### Elevation composition
+
+- **OceanBaseDepth** (default **0.65**, suggested **0.3–0.8**)
+  - Sets baseline ocean depth (affects grayscale/shaded relief, not ocean extent).
+
+- **LandBaseHeight** (default **0.10**, suggested **0–0.6**)
+  - Raises overall land baseline.
+
+- **MountainHeight** (default **1.25**, suggested **0.6–1.6**)
+  - Peak height multiplier.
+
+- **PlateauHeight** (default **0.45**, suggested **0.1–0.6**)
+- **PlateauPower** (default **1.55**, suggested **1.0–2.2**)
+  - Shapes mid/high elevation distribution.
+
+### Relief noise
+
+- **RegionalReliefStrength / Height / ScaleMiles** (defaults **0.35 / 0.22 / 240**)
+  - Broad regional variation.
+  - Increase strength/height for more rolling continents; decrease if too blobby.
+
+- **DetailReliefStrength / Height / ScaleMiles** (defaults **0.22 / 0.08 / 22**)
+  - Adds local variation.
+  - If the map becomes speckled, increase scale and/or reduce strength.
+
+### Step 5 — Relief coherence (foothills)
+
+- **ReliefCoherenceEnabled** (default **true**)
+- **ReliefCoherenceStrength** (default **0.18**, suggested **0–0.35**)
+- **ReliefCoherenceRadiusMiles** (default **140**, suggested **60–240**)
+  - Spreads uplift influence outward to form foothills and reduce mountain→lowland cliffs.
+
+### Step 6 — Basin embedding (hydrology scaffolding)
+
+- **BasinDensity** (default **1.8**, suggested **0–3.0**)
+- **BasinScaleMiles** (default **160**, suggested **60–260**)
+- **BasinStrength** (default **0.55**, suggested **0–0.8**)
+- **BasinRimStrength** (default **0.35**, suggested **0–0.6**)
+  - Creates gentle depressions + rims. If you see sharp circular pits, reduce strength or increase scale.
+
+### Step 7 — Micro-relief
+
+- **MicroReliefEnabled** (default **true**)
+- **MicroReliefStrength** (default **0.25**, suggested **0–0.4**)
+- **MicroReliefHeight** (default **0.030**, suggested **0–0.06**)
+- **MicroReliefScaleMiles** (default **10**, suggested **6–30**)
+  - Small variation without changing continent shape.
+
+### Step 3 — Conditioning (clamp/remap/smooth)
+
+- **ConditioningEnabled** (default **true**)
+- **ConditioningClampPercent** (default **0.01**, suggested **0–0.02**)
+- **ConditioningRemapToConfigRange** (default **true**)
+- **ConditioningSmoothingStrength** (default **0.08**, suggested **0–0.15**)
+- **ConditioningSmoothingRadiusMiles** (default **180**, suggested **80–260**)
+- **ConditioningSmoothingCellMiles** (default **16**, suggested **8–32**)
+  - Conditioning is the most likely place to accidentally change continent shape. Keep strength low.
+
+### Derivatives + debug
+
+- **DerivativesEnabled** (default **true**)
+  - Computes Slope/Aspect/Curvature/CoastDistance.
+
+- **CoastDistanceMaxMiles** (default **300**, suggested **200–800**)
+  - Normalization cap for CoastDistance01.
+
+- **SlopeScale** (default **12**, suggested **6–20**)
+  - Affects slope normalization sensitivity.
+
+- **DebugEnabled** (default **false**)
+  - When enabled, logs both raw knobs and derived counts/scales at module start.
+
+### Band targets
+
+These are used when assigning `ElevationBandFinal` from the continuous elevation field:
+- **DeepOceanShareWithinOcean** (default **0.42**, suggested **0.25–0.55**)
+- **HighMountainsPercentOfLand** (default **0.08**, suggested **0.04–0.12**)
+- **LowMountainsPercentOfLand** (default **0.16**, suggested **0.08–0.24**)
+- **HighlandsPercentOfLand** (default **0.22**, suggested **0.12–0.30**)
+
+---
+
+## Validation checklist
+
+- CoastDistance shows a coastline gradient (not fully black).
+- No ocean tiles appear inland (if `NoInlandWaterAfterElevation=true`).
+- Mountain belts have foothills after Step 5.
+- Basins appear as broad shallow depressions (not pits) after Step 6.
+- Micro-relief adds texture without speckling.
+

@@ -22,7 +22,13 @@ namespace HumbleBeginnings.WorldViewer
         }
 
         public static Vector3 WorldCenter(int widthTiles, int heightTiles, float tileSize)
-            => new Vector3((widthTiles * tileSize) * 0.5f, 0f, (heightTiles * tileSize) * 0.5f);
+        {
+            // Center of the tile domain [0..width-1] x [0..height-1].
+            // Using width*0.5 introduces a half-tile offset and can drift camera/chunk alignment.
+            float cx = Mathf.Max(0, widthTiles - 1) * tileSize * 0.5f;
+            float cz = Mathf.Max(0, heightTiles - 1) * tileSize * 0.5f;
+            return new Vector3(cx, 0f, cz);
+        }
 
         // --- Helpers expected by chunk/camera code ---
 

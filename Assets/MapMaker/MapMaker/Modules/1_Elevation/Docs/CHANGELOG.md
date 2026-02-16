@@ -1,57 +1,18 @@
-# Elevation Module — Changelog
+# Changelog — Module 1 (Elevation)
 
-## v2.0 — 2026-02-07
-### Complete Rewrite: Noise + Continental Gradients
+## 2026-02-14
 
-**Breaking Changes:**
-- Completely new config parameters
-- Removed all directional growth parameters
-- Removed old edge bias parameters
+- Complete rewrite to a **scale-aware, macro-first** elevation model.
+- Consolidated configuration into a small set of **miles-based** knobs with derived counts/scales.
+- Added deterministic debug logging of derived values to support tuning from logs.
 
-**New Features:**
-- Continental gradient system for realistic continent placement
-- Configurable gradient strength, reach, and power curve
-- Coastline noise layer for irregular coasts
-- Opposite edge ocean margin with smooth falloff
-- Support for ring continents (EdgeBias = All)
+## Module 1 plan (steps 1–8)
 
-**Improvements:**
-- Solid continents instead of fragmented archipelagos
-- No unwanted inland seas at elevation layer
-- Predictable continent shapes based on EdgeBias
-- Better parameter control over continent size/shape
-
-**Parameters Added:**
-- ContinentalGradientStrength (0-2)
-- ContinentalGradientReach (0.1-1)
-- ContinentalGradientPower (0.5-3)
-- OppositeEdgeOceanMargin (0-20 tiles)
-- CoastlineNoiseScale
-- CoastlineNoiseStrength (0-0.5)
-
-**Parameters Removed:**
-- UseDirectionalGrowth
-- SeedStripDepth, SeedStripVariation
-- GrowthDirectionality, GrowthClumping
-- GrowthNoiseScale, GrowthNoiseStrength
-- EdgeBiasStrength, EdgeBiasFalloff, EdgeBiasExponent
-- EdgeBiasNoiseScale
-- EdgeMarginTiles
-
----
-
-## v1.1 — 2026-02-06 (Deprecated)
-### Attempted Directional Growth
-
-**Status:** Removed in v2.0
-
-Attempted cellular growth algorithm to create directional landmasses.
-Failed to produce solid continents - created fragmented archipelagos instead.
-
----
-
-## v1.0 — 2026-02-05
-### Initial Implementation
-
-Basic Perlin noise elevation with soft edge bias.
-Created random islands but lacked directional continental flow.
+1. **Macro scaffolding** — create initial land mask, plates, and uplift drivers.
+2. **Coastline resolution** — sea-level via percentile + coast fade/carve + shelf shaping.
+3. **Field conditioning** — clamp/remap + very-low-strength macro-safe smoothing.
+4. **Ocean connectivity** — remove inland seas (no inland water after Module 1).
+5. **Relief coherence** — reduce harsh adjacency (foothills / regional relief spread).
+6. **Basin embedding** — depressions + rims as hydrology scaffolding (no water classification).
+7. **Micro-relief** — add local variation without corrupting macro geography.
+8. **Final preparation** — stability checks + derivative fields + exports for downstream modules.

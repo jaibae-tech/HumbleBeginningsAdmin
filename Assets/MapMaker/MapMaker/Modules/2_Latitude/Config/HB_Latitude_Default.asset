@@ -12,13 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d924bd56c1720249a149386b06c0c9c, type: 3}
   m_Name: HB_Latitude_Default
   m_EditorClassIdentifier: Assembly-CSharp::MapMaker.Modules.Latitude2.Config.HB_LatitudeConfig
-  ThreeBandArcticPercent: 0.15
-  ThreeBandTemperatePercent: 0.6
-  ThreeBandTropicalPercent: 0.25
-  FiveBandNorthArcticPercent: 0.12
-  FiveBandNorthTemperatePercent: 0.29
-  FiveBandTropicalPercent: 0.18
-  FiveBandSouthTemperatePercent: 0.29
-  FiveBandSouthArcticPercent: 0.12
-  BandWarpNoiseScale: 0.02
-  BandWarpStrength: 0.05
+  LatitudeMin01: 0.15
+  LatitudeMax01: 0.9
+  CurvePower: 1
+  EnableGlobalWarp: 1
+  WarpAmplitude: 0.03
+  SeasonAmpMin01: 0.05
+  SeasonAmpMax01: 0.25
+  SeasonLatitudePower: 1.5

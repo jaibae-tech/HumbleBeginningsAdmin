@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 134d7cc3a53f3564c9afa1f75a885b02
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures:
+  - _GrassAlbedo: {fileID: 2800000, guid: 61d56636c9b7b1748982fd417c42201d, type: 3}
+  - _GrassNormal: {fileID: 2800000, guid: a70c6cef359ffcb469dd2c771021a627, type: 3}
+  - _RockAlbedo: {fileID: 2800000, guid: 905bd3d5d4f4e6948877dcacc78ec36a, type: 3}
+  - _RockNormal: {fileID: 2800000, guid: 79320f69401b84e4f80fde094defd27d, type: 3}
+  - _SandAlbedo: {fileID: 2800000, guid: eabca4ef3d906474ca0c3b168d9a0a49, type: 3}
+  - _SandNormal: {fileID: 2800000, guid: 18e061916021adc4d807d6cde56d1121, type: 3}
+  - _DetailNormal: {fileID: 2800000, guid: 18e061916021adc4d807d6cde56d1121, type: 3}
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

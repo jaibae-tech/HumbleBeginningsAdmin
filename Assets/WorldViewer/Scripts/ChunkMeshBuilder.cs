@@ -31,6 +31,12 @@ namespace HumbleBeginnings.WorldViewer
             float denomX = Mathf.Max(1f, tilesX);
             float denomY = Mathf.Max(1f, tilesY);
 
+            float sea = (controller != null && controller.Meta != null) ? controller.Meta.seaLevel01 : 0.33f;
+            bool debug = controller != null && controller.DebugLogChunkBuild;
+
+            float minE = float.PositiveInfinity, maxE = float.NegativeInfinity;
+            float minH = float.PositiveInfinity, maxH = float.NegativeInfinity;
+
             int i = 0;
             for (int y = 0; y < vertsY; y++)
             for (int x = 0; x < vertsX; x++)
@@ -38,11 +44,22 @@ namespace HumbleBeginnings.WorldViewer
                 int tx = startX + x;
                 int ty = startY + y;
 
-                float e01 = controller.GetElevation01(tx, ty);
+                float e01 = controller != null ? controller.GetElevation01(tx, ty) : 0f;
                 float h = e01 * heightScale;
 
+                if (!float.IsNaN(e01) && !float.IsInfinity(e01))
+                {
+                    minE = Mathf.Min(minE, e01);
+                    maxE = Mathf.Max(maxE, e01);
+                }
+                if (!float.IsNaN(h) && !float.IsInfinity(h))
+                {
+                    minH = Mathf.Min(minH, h);
+                    maxH = Mathf.Max(maxH, h);
+                }
+
                 verts[i] = new Vector3(x * tileSize, h, y * tileSize);
-                cols[i]  = ColorForElevation01(e01, controller.Meta != null ? controller.Meta.seaLevel01 : 0.33f);
+                cols[i]  = ColorForElevation01(e01, sea);
                 uvs[i]   = new Vector2(x / denomX, y / denomY);
                 i++;
             }
@@ -76,6 +93,18 @@ namespace HumbleBeginnings.WorldViewer
 
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
+
+            if (debug)
+            {
+                if (float.IsPositiveInfinity(minE)) minE = 0f;
+                if (float.IsNegativeInfinity(maxE)) maxE = 0f;
+                if (float.IsPositiveInfinity(minH)) minH = 0f;
+                if (float.IsNegativeInfinity(maxH)) maxH = 0f;
+
+                Debug.Log($"[WorldViewer][ChunkMeshBuilder] start=({startX},{startY}) size=({tilesX}x{tilesY}) " +
+                          $"e01 min={minE:0.###} max={maxE:0.###} range={(maxE-minE):0.###} " +
+                          $"h min={minH:0.###} max={maxH:0.###} range={(maxH-minH):0.###} heightScale={heightScale:0.###}");
+            }
 
             return mesh;
         }

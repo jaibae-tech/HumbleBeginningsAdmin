@@ -7,7 +7,7 @@ namespace MapMaker.Modules.Latitude2.Scripts
 {
     public static class LatitudeValidate
     {
-        public static void Validate(HB_LatitudeConfig cfg, bool useFiveBands, LogEmitter emit)
+        public static void Validate(HB_LatitudeConfig cfg, LogEmitter emit)
         {
             if (cfg == null)
             {
@@ -16,71 +16,76 @@ namespace MapMaker.Modules.Latitude2.Scripts
                 return;
             }
 
-            if (useFiveBands)
+            if (cfg.LatitudeMin01 < 0f || cfg.LatitudeMin01 > 1f || cfg.LatitudeMax01 < 0f || cfg.LatitudeMax01 > 1f)
             {
-                float sum = cfg.FiveBandSum();
-                if (Math.Abs(sum - 1f) > 0.05f)
-                {
-                    emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_5BAND_SUM",
-                        $"5-band percentages sum to {sum:F3}, expected 1.0. System will normalize at runtime.");
-                }
-            }
-            else
-            {
-                float sum = cfg.ThreeBandSum();
-                if (Math.Abs(sum - 1f) > 0.05f)
-                {
-                    emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_3BAND_SUM",
-                        $"3-band percentages sum to {sum:F3}, expected 1.0. System will normalize at runtime.");
-                }
+                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_RANGE",
+                    $"LatitudeMin01/LatitudeMax01 should be within 0..1 (min={cfg.LatitudeMin01:F3}, max={cfg.LatitudeMax01:F3})");
             }
 
-            if (cfg.BandWarpNoiseScale <= 0f)
+            if (cfg.LatitudeMax01 <= cfg.LatitudeMin01)
             {
-                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_WARP_SCALE",
-                    $"BandWarpNoiseScale must be positive, got {cfg.BandWarpNoiseScale}");
+                emit(LogLevel.ERROR, LogContext.Module, LogPhase.Validation, "LATITUDE_MINMAX",
+                    $"LatitudeMax01 must be > LatitudeMin01 (min={cfg.LatitudeMin01:F3}, max={cfg.LatitudeMax01:F3})");
             }
 
-            if (cfg.BandWarpStrength < 0f || cfg.BandWarpStrength > 0.2f)
+            if (cfg.EnableGlobalWarp && cfg.WarpAmplitude > 0.05f)
             {
-                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_WARP_STRENGTH",
-                    $"BandWarpStrength should be 0-0.2, got {cfg.BandWarpStrength}");
+                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_WARP_AMPLITUDE",
+                    $"WarpAmplitude should be <= 0.05 to avoid fragmentation (got {cfg.WarpAmplitude:F3})");
+            }
+
+            if (cfg.SeasonAmpMax01 < cfg.SeasonAmpMin01)
+            {
+                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_SEASON_RANGE",
+                    $"SeasonAmpMax01 < SeasonAmpMin01 (min={cfg.SeasonAmpMin01:F3}, max={cfg.SeasonAmpMax01:F3})");
             }
         }
 
-        public static void LogBandDistribution(WorldArrays world, LogEmitter emit)
+        public static void LogLatitudeStats(WorldArrays world, LogEmitter emit)
         {
-            if (world == null || world.LatitudeBands == null) return;
+            if (world == null || world.LatitudeEnergy01 == null || world.LatitudeEnergy01.Length == 0) return;
 
-            int arcticCount = 0;
-            int temperateCount = 0;
-            int tropicalCount = 0;
+            float min = float.PositiveInfinity;
+            float max = float.NegativeInfinity;
+            double sum = 0;
+            int n = world.LatitudeEnergy01.Length;
 
-            for (int i = 0; i < world.LatitudeBands.Length; i++)
+            for (int i = 0; i < n; i++)
             {
-                switch (world.LatitudeBands[i])
-                {
-                    case LatitudeBandType.Arctic:
-                        arcticCount++;
-                        break;
-                    case LatitudeBandType.Temperate:
-                        temperateCount++;
-                        break;
-                    case LatitudeBandType.Tropical:
-                        tropicalCount++;
-                        break;
-                }
+                float v = world.LatitudeEnergy01[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
+                sum += v;
             }
 
-            int total = world.LatitudeBands.Length;
-            float arcticPct = (float)arcticCount / total;
-            float temperatePct = (float)temperateCount / total;
-            float tropicalPct = (float)tropicalCount / total;
+            float mean = (float)(sum / n);
 
-            emit(LogLevel.INFO, LogContext.Module, LogPhase.Validation, "LATITUDE_DISTRIBUTION",
-                $"Arctic: {arcticPct:P1} ({arcticCount}/{total}), " +
-                $"Temperate: {temperatePct:P1} ({temperateCount}/{total}), " +
-                $"Tropical: {tropicalPct:P1} ({tropicalCount}/{total})");
+            // Simple monotonic sanity check: average south row should be warmer than average north row.
+            float south = 0f;
+            float north = 0f;
+            int w = world.Width;
+            int h = world.Height;
+            if (w > 0 && h > 0)
+            {
+                int ySouth = 0;
+                int yNorth = h - 1;
+                for (int x = 0; x < w; x++)
+                {
+                    south += world.LatitudeEnergy01[(ySouth * w) + x];
+                    north += world.LatitudeEnergy01[(yNorth * w) + x];
+                }
+                south /= Math.Max(1, w);
+                north /= Math.Max(1, w);
+            }
+
+            emit(LogLevel.INFO, LogContext.Module, LogPhase.Validation, "LATITUDE_STATS",
+                $"LatitudeEnergy01 min={min:F3} mean={mean:F3} max={max:F3} | southRow={south:F3} northRow={north:F3}");
+
+            if (south <= north)
+            {
+                emit(LogLevel.WARN, LogContext.Module, LogPhase.Validation, "LATITUDE_MONOTONIC",
+                    "LatitudeEnergy01 appears non-monotonic (south row not warmer than north row). Check module settings or coordinate conventions.");
+            }
         }
     }
 }
