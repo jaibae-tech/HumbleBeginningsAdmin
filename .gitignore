@@ -12,3 +12,9 @@ UserSettings/
 *.csproj
 *.sln
 .bezisidekick/
+
+# Plastic SCM
+.plastic/
+
+# Archives
+*.zip
