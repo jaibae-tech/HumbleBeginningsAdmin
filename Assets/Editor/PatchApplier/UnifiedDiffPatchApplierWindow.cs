@@ -100,9 +100,11 @@ public sealed class UnifiedDiffPatchApplierWindow : EditorWindow
         var bad = parsed
             .SelectMany(b => new[] { b.OldPath, b.NewPath })
             .Where(p => !string.IsNullOrEmpty(p))
+            .Where(p => p != "/dev/null")
             .Where(p => !(p.StartsWith("Assets/") || p.StartsWith("Packages/") || p.StartsWith("ProjectSettings/")))
             .Distinct()
             .ToList();
+
 
         if (bad.Count > 0)
             return "Validation failed: patch references non-project paths:\n- " + string.Join("\n- ", bad);
